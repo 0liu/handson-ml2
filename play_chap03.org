@@ -1,0 +1,875 @@
+#+TITLE: Practice Hands-on ML Chap03 - Classification
+
+
+#+begin_src jupyter-python
+#
+# Py data
+import pandas as pd
+import numpy as np
+from scipy import stats
+
+# Visualization
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+
+mpl.rc("axes", labelsize=14)
+mpl.rc("xtick", labelsize=12)
+mpl.rc("ytick", labelsize=12)
+mpl.rc("figure", facecolor="white", dpi=300)
+
+# sklearn datasets
+from sklearn.datasets import fetch_openml
+
+# Data train/test split
+
+# Data cleaning and transform
+from sklearn.preprocessing import StandardScaler
+
+# Model selection / Hyper-parameter tuning
+from sklearn.model_selection import cross_val_score, cross_val_predict
+from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import precision_recall_curve
+from sklearn.metrics import roc_curve, roc_auc_score
+from sklearn.metrics import plot_confusion_matrix
+
+# Models
+from sklearn.linear_model import SGDClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+from sklearn.multiclass import OneVsRestClassifier
+from sklearn.neighbors import KNeighborsClassifier
+#
+#+end_src
+
+#+RESULTS:
+
+
+
+
+* MNIST handwritten digits image data
+
+*** Load data and inspection
+#+begin_src jupyter-python
+mnist = fetch_openml("mnist_784", version=1)
+mnist.keys()
+#+end_src
+
+#+RESULTS:
+: dict_keys(['data', 'target', 'frame', 'categories', 'feature_names', 'target_names', 'DESCR', 'details', 'url'])
+
+#+begin_src jupyter-python
+mnist['DESCR'], mnist['url']
+#+end_src
+
+#+RESULTS:
+| **Author**: Yann LeCun, Corinna Cortes, Christopher J.C. Burges  \n**Source**: [MNIST Website](http://yann.lecun.com/exdb/mnist/) - Date unknown  \n**Please cite**:  \n\nThe MNIST database of handwritten digits with 784 features, raw data available at: http://yann.lecun.com/exdb/mnist/. It can be split in a training set of the first 60,000 examples, and a test set of 10,000 examples  \n\nIt is a subset of a larger set available from NIST. The digits have been size-normalized and centered in a fixed-size image. It is a good database for people who want to try learning techniques and pattern recognition methods on real-world data while spending minimal efforts on preprocessing and formatting. The original black and white (bilevel) images from NIST were size normalized to fit in a 20x20 pixel box while preserving their aspect ratio. The resulting images contain grey levels as a result of the anti-aliasing technique used by the normalization algorithm. the images were centered in a 28x28 image by computing the center of mass of the pixels, and translating the image so as to position this point at the center of the 28x28 field.  \n\nWith some classification methods (particularly template-based methods, such as SVM and K-nearest neighbors), the error rate improves when the digits are centered by bounding box rather than center of mass. If you do this kind of pre-processing, you should report it in your publications. The MNIST database was constructed from NIST's NIST originally designated SD-3 as their training set and SD-1 as their test set. However, SD-3 is much cleaner and easier to recognize than SD-1. The reason for this can be found on the fact that SD-3 was collected among Census Bureau employees, while SD-1 was collected among high-school students. Drawing sensible conclusions from learning experiments requires that the result be independent of the choice of training set and test among the complete set of samples. Therefore it was necessary to build a new database by mixing NIST's datasets.  \n\nThe MNIST training set is composed of 30,000 patterns from SD-3 and 30,000 patterns from SD-1. Our test set was composed of 5,000 patterns from SD-3 and 5,000 patterns from SD-1. The 60,000 pattern training set contained examples from approximately 250 writers. We made sure that the sets of writers of the training set and test set were disjoint. SD-1 contains 58,527 digit images written by 500 different writers. In contrast to SD-3, where blocks of data from each writer appeared in sequence, the data in SD-1 is scrambled. Writer identities for SD-1 is available and we used this information to unscramble the writers. We then split SD-1 in two: characters written by the first 250 writers went into our new training set. The remaining 250 writers were placed in our test set. Thus we had two sets with nearly 30,000 examples each. The new training set was completed with enough examples from SD-3, starting at pattern # 0, to make a full set of 60,000 training patterns. Similarly, the new test set was completed with SD-3 examples starting at pattern # 35,000 to make a full set with 60,000 test patterns. Only a subset of 10,000 test images (5,000 from SD-1 and 5,000 from SD-3) is available on this site. The full 60,000 sample training set is available.\n\nDownloaded from openml.org. | https://www.openml.org/d/554 |
+
+
+#+begin_src jupyter-python
+X, y = mnist['data'].values, mnist['target'].values
+print(X.shape, y.shape)
+np.sqrt(X.shape[1])  # Number of pixels on one edge
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+: (70000, 784) (70000,)
+: 28.0
+:END:
+
+#+begin_src jupyter-python
+print(X[:5, 150:200])
+print(y[:20])
+#+end_src
+
+#+RESULTS:
+#+begin_example
+[[  0.   0.   3.  18.  18.  18. 126. 136. 175.  26. 166. 255. 247. 127.
+    0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.  30.  36.
+   94. 154. 170. 253. 253. 253. 253. 253. 225. 172. 253. 242. 195.  64.
+    0.   0.   0.   0.   0.   0.   0.   0.]
+ [  0.   0.   0.   0.  48. 238. 252. 252. 252. 237.   0.   0.   0.   0.
+    0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.
+    0.   0.   0.  54. 227. 253. 252. 239. 233. 252.  57.   6.   0.   0.
+    0.   0.   0.   0.   0.   0.   0.   0.]
+ [  0.   0.   0.   0.   0.   0.   0.   0.   0.   0.  67. 232.  39.   0.
+    0.   0.   0.   0.   0.   0.   0.   0.  62.  81.   0.   0.   0.   0.
+    0.   0.   0.   0.   0.   0.   0.   0.   0.   0. 120. 180.  39.   0.
+    0.   0.   0.   0.   0.   0.   0.   0.]
+ [  0.   0.   0.   0.   0.   0.   0.   0. 124. 253. 255.  63.   0.   0.
+    0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.
+    0.   0.   0.   0.   0.   0.   0.  96. 244. 251. 253.  62.   0.   0.
+    0.   0.   0.   0.   0.   0.   0.   0.]
+ [  0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.
+    0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.
+    0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.
+    0.   0.   0.   0.   0.   0.   0.   0.]]
+['5', '0', '4', '1', '9', ..., '7', '2', '8', '6', '9']
+Length: 20
+Categories (10, object): ['0', '1', '2', '3', ..., '6', '7', '8', '9']
+#+end_example
+
+**** Convert labels from str to int
+#+begin_src jupyter-python
+y = y.astype(np.uint8)
+#+end_src
+
+#+RESULTS:
+
+*** Plot the first image
+#+begin_src jupyter-python
+def plot_digit(data):
+    image = data.reshape(28, 28)
+    plt.imshow(image, cmap=mpl.cm.binary, interpolation="nearest")
+    plt.axis("off")
+
+some_digit = X[0]
+plt.figure(figsize=(0.5, 0.5))
+plot_digit(some_digit)
+print("Label of 1st image:", y[0])
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+: Label of 1st image: 5
+[[file:./.ob-jupyter/ad58fd9801120faf005f118b76d8d962b80cfdaf.png]]
+:END:
+
+*** Plot a bunch of instances (images)
+
+#+begin_src jupyter-python
+def plot_digits(instances, images_per_row=10, **options):
+    size = 28
+    images = [instance.reshape(size, size) for instance in instances]
+
+    n_col = min(len(instances), images_per_row)
+    n_rows = (len(instances) - 1) // n_col + 1
+    n_empty = n_rows * n_col - len(instances)
+    images.append(np.zeros((size, size * n_empty)))
+
+    row_images = []
+    for r in range(n_rows):
+        r_images = images[r * n_col : (r + 1) * n_col]
+        row_images.append(np.concatenate(r_images, axis=1))
+    image = np.concatenate(row_images, axis=0)
+
+    plt.imshow(image, cmap=mpl.cm.binary, **options)
+    plt.axis("off")
+
+
+plt.figure(figsize=(2, 2))
+example_images = X[:100]
+plot_digits(example_images, images_per_row=10)
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/d44c7e6dfbad94ea37631dd9b12042053042e131.png]]
+
+
+*** Split training / test sets
+*Note*: The data set are already shuffled.
+
+#+begin_src jupyter-python
+split_bound = 60000
+X_train, X_test, y_train, y_test = (
+    X[:split_bound],
+    X[split_bound:],
+    y[:split_bound],
+    y[split_bound:],
+)
+#+end_src
+
+#+RESULTS:
+
+
+* Binary classifier
+
+*** Labels for a binary classifier are just 0 and 1.
+#+begin_src jupyter-python
+y_train_5, y_test_5 = y_train == 5, y_test == 5
+y_train_5[:50]
+#+end_src
+
+#+RESULTS:
+: array([ True, False, False, False, False, False, False, False, False,
+:        False, False,  True, False, False, False, False, False, False,
+:        False, False, False, False, False, False, False, False, False,
+:        False, False, False, False, False, False, False, False,  True,
+:        False, False, False, False, False, False, False, False, False,
+:        False, False,  True, False, False])
+
+*** SGD classifier
+SGD classifier deals with instances independently, so it can handle very large datasets efficiently, and well suited for online learning.
+
+#+begin_src jupyter-python
+sgd_clf = SGDClassifier(loss='hinge', max_iter=1000, tol=1e-3, random_state=42)
+sgd_clf.fit(X_train, y_train_5)
+#+end_src
+
+#+RESULTS:
+: SGDClassifier(random_state=42)
+
+#+begin_src jupyter-python
+sgd_clf.predict([some_digit])
+#+end_src
+
+#+RESULTS:
+: array([ True])
+
+
+* Performance Measures
+
+*** Accuracy by cross-validation
+
+#+begin_src jupyter-python
+cross_val_score(sgd_clf, X_train, y_train_5, cv=3, scoring='accuracy')
+#+end_src
+
+#+RESULTS:
+: array([0.95035, 0.96035, 0.9604 ])
+
+Accuracy is not a good metric for a skewed data set.
+
+*** Confusion matrix
+
+#+begin_src jupyter-python
+y_train_pred = cross_val_predict(sgd_clf, X_train, y_train_5, cv=3)
+cm = confusion_matrix(y_train_5, y_train_pred)
+cm
+#+end_src
+
+#+RESULTS:
+: array([[53892,   687],
+:        [ 1891,  3530]])
+
+*** Precision
+#+begin_src jupyter-python
+precision = precision_score(y_train_5, y_train_pred)
+precision_from_cm = cm[1, 1] / (cm[0, 1] + cm[1, 1])  # TP / FP + TP
+print(f"{precision = }\n{precision_from_cm = }")
+#+end_src
+
+#+RESULTS:
+: precision = 0.8370879772350012
+: precision_from_cm = 0.8370879772350012
+
+*** Sensitivity / Recall / TPR
+
+#+begin_src jupyter-python
+sensitivity = recall_score(y_train_5, y_train_pred)
+sensitivity_from_cm = cm[1, 1] / (cm[1, 0] + cm[1, 1])  # TP / FN + TP
+print(f"{sensitivity = }\n{sensitivity_from_cm = }")
+#+end_src
+
+#+RESULTS:
+: sensitivity = 0.6511713705958311
+: sensitivity_from_cm = 0.6511713705958311
+
+*** F1 score
+- Harmonic mean gives much weight to low values (penalize extremes)
+- Only get high F1 if both precision and recall are high
+- F1 favors classifiers having similar precision and recall
+
+#+begin_src jupyter-python
+f1 = f1_score(y_train_5, y_train_pred)
+f1_from_cm = cm[1,1] / (cm[1,1] + (cm[1,0] + cm[0, 1]) / 2)  # TP / (TP + (FN+FP)/2)
+print(f"{f1 = }\n{f1_from_cm = }")
+#+end_src
+
+#+RESULTS:
+: f1 = 0.7325171197343846
+: f1_from_cm = 0.7325171197343847
+
+*** Precision / Recall Trade-off
+
+#+begin_src jupyter-python
+y_scores = sgd_clf.decision_function([some_digit])
+y_scores
+#+end_src
+
+#+RESULTS:
+: array([2164.22030239])
+
+#+begin_src jupyter-python
+threshold = 0
+y_some_digit_pred = (y_scores > threshold)
+print(y_some_digit_pred)
+
+threshold = 8000
+y_some_digit_pred = (y_scores > threshold)
+print(y_some_digit_pred)
+#+end_src
+
+#+RESULTS:
+: [ True]
+: [False]
+
+*** Choose a threshold based on precision requirement
+
+#+begin_src jupyter-python
+y_scores = cross_val_predict(
+    sgd_clf, X_train, y_train_5, cv=3, method="decision_function"
+)
+precisions, recalls, thresholds = precision_recall_curve(y_train_5, y_scores)
+y_scores[:20]
+#+end_src
+
+#+RESULTS:
+: array([  1200.93051237, -26883.79202424, -33072.03475406, -15919.5480689 ,
+:        -20003.53970191, -16652.87731528, -14276.86944263, -23328.13728948,
+:         -5172.79611432, -13873.5025381 , -22112.989794  ,  -2315.51879869,
+:        -29304.06327411, -18276.25416535,  -6790.91252517, -16924.86869525,
+:        -24589.95425105, -18278.36420614,  -6027.9952283 , -22381.6171182 ])
+
+#+begin_src jupyter-python
+def plot_precision_recall_curve(precisions, recalls, thresholds):
+    plt.plot(thresholds, precisions[:-1], "b-", label="Precision", linewidth=2)
+    plt.plot(thresholds, recalls[:-1], "g-", label="Recall", linewidth=2)
+    plt.legend(loc="center right")
+    plt.xlabel("Threshold")
+    plt.grid("True")
+    plt.axis([-50000, 50000, 0, 1])
+
+recall_at_90_precision = recalls[np.argmax(precisions >= 0.9)]
+threshold_at_90_precision = thresholds[np.argmax(precisions >= 0.9)]
+
+plt.figure(figsize=(4, 3))
+plot_precision_recall_curve(precisions, recalls, thresholds)
+plt.plot([threshold_at_90_precision, threshold_at_90_precision], [0, 0.9], "r:")
+plt.plot([-50000, threshold_at_90_precision], [0.9, 0.9], "r:")
+plt.plot([-50000, threshold_at_90_precision], [recall_at_90_precision, recall_at_90_precision], "r:")
+plt.plot([threshold_at_90_precision], [0.9], "ro")
+plt.plot([threshold_at_90_precision], [recall_at_90_precision], "ro");
+
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/30de467d6f5c68d89c643563bdc4330eb91ead45.png]]
+
+#+begin_src jupyter-python
+def plot_precision_vs_recall(precisions, recalls):
+    plt.plot(recalls, precisions, "b-", linewidth=2)
+    plt.xlabel("Recall", fontsize=16)
+    plt.ylabel("Precision", fontsize=16)
+    plt.axis([0, 1, 0, 1])
+    plt.grid(True)
+plt.figure(figsize=(4,3))
+plot_precision_vs_recall(precisions, recalls)
+plt.plot([recall_at_90_precision, recall_at_90_precision], [0, 0.9], "r:");
+plt.plot([0, recall_at_90_precision], [0.9, 0.9], "r:")
+plt.plot(recall_at_90_precision, 0.9, 'ro');
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/7bdf4293648a64b840914203b0b694e760face10.png]]
+**** Predict with the chosen threshold
+
+#+begin_src jupyter-python
+threshold_at_90_precision
+#+end_src
+
+#+RESULTS:
+: 3370.0194991439557
+
+#+begin_src jupyter-python
+y_train_pred_90 = (y_scores >= threshold_at_90_precision)
+precision_90 = precision_score(y_train_5, y_train_pred_90)
+recall_90 = recall_score(y_train_5, y_train_pred_90)
+print(f"{precision_90 = :.4f} {recall_90 = :.4f}")
+#+end_src
+
+#+RESULTS:
+: precision_90 = 0.9000 recall_90 = 0.4800
+
+*** ROC curves
+
+#+begin_src jupyter-python
+fpr, tpr, thresholds = roc_curve(y_train_5, y_scores)
+fpr[:10], tpr[:10], thresholds[:10]
+#+end_src
+
+#+RESULTS:
+| array | ((0.0 0.0 0.0 1.83220653e-05 1.83220653e-05 3.66441305e-05 3.66441305e-05 5.49661958e-05 5.49661958e-05 9.16103263e-05)) | array | ((0 0.00018447 0.00092234 0.00092234 0.00129127 0.00129127 0.00239808 0.00239808 0.00387382 0.00387382)) | array | ((49442.43765905 49441.43765905 36801.60697028 35987.20307515 34662.20950045 34547.44702864 31847.88726914 31839.58732479 29264.18900855 28970.36525473)) |
+
+#+begin_src jupyter-python
+def plot_roc_curve(fpr, tpr, label=None):
+    plt.plot(fpr, tpr, label=label, linewidth=2)
+    plt.plot([0, 1], [0, 1], "k--")  # diagonal
+    plt.axis([0, 1, 0, 1])
+    plt.xlabel("FPR (Fall-Out)")
+    plt.ylabel("TPR (Recall, Sensitivity)")
+    plt.grid(True)
+
+
+plt.figure(figsize=(3, 2))
+plot_roc_curve(fpr, tpr)
+fpr_at_90_precision = fpr[np.argmax(tpr >= recall_at_90_precision)]
+plt.plot([fpr_at_90_precision, fpr_at_90_precision], [0, recall_at_90_precision], "r:")
+plt.plot([0, fpr_at_90_precision], [recall_at_90_precision, recall_at_90_precision], "r:")
+plt.plot(fpr_at_90_precision, recall_at_90_precision, "ro");
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/0d57cbb036742990a02778faa42d9f84672360ff.png]]
+
+#+begin_src jupyter-python
+print("ROC AUC score = ", roc_auc_score(y_train_5, y_scores))
+#+end_src
+
+#+RESULTS:
+: ROC AUC score =  0.9604938554008616
+
+
+*** Improvement on classifier
+
+#+begin_src jupyter-python
+forest_clf = RandomForestClassifier(n_estimators=100, random_state=42)
+y_probas_forest = cross_val_predict(
+    forest_clf, X_train, y_train_5, cv=3, method="predict_proba"
+)
+y_probas_forest[:10]  # Output dimension: n_samples, n_classes
+#+end_src
+
+#+RESULTS:
+: array([[0.11, 0.89],
+:        [0.99, 0.01],
+:        [0.96, 0.04],
+:        [1.  , 0.  ],
+:        [0.99, 0.01],
+:        [1.  , 0.  ],
+:        [1.  , 0.  ],
+:        [1.  , 0.  ],
+:        [1.  , 0.  ],
+:        [0.99, 0.01]])
+
+#+begin_src jupyter-python
+y_scores_forest = y_probas_forest[:, 1]  # score = probability of positive class
+fpr_forest, tpr_forest, thresholds_forest = roc_curve(y_train_5, y_scores_forest)
+thresholds_forest[:200]
+#+end_src
+
+#+RESULTS:
+: array([2.  , 1.  , 0.99, 0.98, 0.97, 0.96, 0.95, 0.94, 0.93, 0.92, 0.91,
+:        0.9 , 0.89, 0.88, 0.87, 0.86, 0.85, 0.84, 0.83, 0.82, 0.81, 0.8 ,
+:        0.79, 0.78, 0.77, 0.76, 0.75, 0.74, 0.73, 0.72, 0.71, 0.7 , 0.69,
+:        0.67, 0.66, 0.65, 0.64, 0.63, 0.62, 0.61, 0.6 , 0.59, 0.58, 0.57,
+:        0.56, 0.55, 0.54, 0.53, 0.52, 0.51, 0.5 , 0.49, 0.48, 0.47, 0.46,
+:        0.45, 0.44, 0.43, 0.42, 0.41, 0.4 , 0.39, 0.38, 0.37, 0.36, 0.35,
+:        0.34, 0.33, 0.32, 0.31, 0.3 , 0.29, 0.28, 0.27, 0.26, 0.25, 0.24,
+:        0.23, 0.22, 0.21, 0.2 , 0.19, 0.18, 0.17, 0.16, 0.15, 0.14, 0.13,
+:        0.12, 0.11, 0.1 , 0.09, 0.08, 0.07, 0.06, 0.05, 0.04, 0.03, 0.02,
+:        0.01, 0.  ])
+
+
+#+begin_src jupyter-python
+recall_at_90_precision_forest = tpr_forest[np.argmax(fpr_forest >= fpr_at_90_precision)]
+
+plt.figure(figsize=(3, 2.5))
+plt.plot(fpr, tpr, "b:", linewidth=2, label="SGD")
+plot_roc_curve(fpr_forest, tpr_forest, "Random Forest")
+plt.plot([fpr_at_90_precision, fpr_at_90_precision], [0, recall_at_90_precision], "r:")
+plt.plot([fpr_at_90_precision, fpr_at_90_precision], [0, recall_at_90_precision_forest])
+plt.plot(
+    [0, fpr_at_90_precision], [recall_at_90_precision, recall_at_90_precision], "r:"
+)
+plt.plot(fpr_at_90_precision, recall_at_90_precision, "ro")
+plt.plot(fpr_at_90_precision, recall_at_90_precision_forest, "ro")
+plt.grid(True)
+plt.legend(loc="lower right", fontsize=6)
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/65d5704dae2e1fd07aa5382ba00d494df8b438e8.png]]
+
+#+begin_src jupyter-python
+print("Forest ROC AUC score = ", roc_auc_score(y_train_5, y_scores_forest))
+
+y_train_pred_forest = cross_val_predict(forest_clf, X_train, y_train_5, cv=3)
+prec_score_forest = precision_score(y_train_5, y_train_pred_forest)
+recall_score_forest = recall_score(y_train_5, y_train_pred_forest)
+print(f"Forest precision score = {prec_score_forest}")
+print(f"Forest recall score = {recall_score_forest}")
+#+end_src
+
+#+RESULTS:
+: Forest ROC AUC score =  0.9983436731328145
+: Forest precision score = 0.9905083315756169
+: Forest recall score = 0.8662608374838591
+
+
+* Multiclass classification
+
+*** One-vs-One (OvO) with SVM
+
+#+begin_src jupyter-python
+svm_clf = SVC(gamma='auto', random_state=42)
+svm_clf.fit(X_train[:1000], y_train[:1000])
+svm_clf.predict([some_digit])
+#+end_src
+
+#+RESULTS:
+: array([5], dtype=uint8)
+
+- Return 10 scores per instance, 1 for each class:
+
+#+begin_src jupyter-python
+svm_clf.classes_
+#+end_src
+
+#+RESULTS:
+: array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], dtype=uint8)
+
+#+begin_src jupyter-python
+some_digit_score = svm_clf.decision_function([some_digit])
+some_digit_score
+#+end_src
+
+#+RESULTS:
+: array([[ 2.81585438,  7.09167958,  3.82972099,  0.79365551,  5.8885703 ,
+:          9.29718395,  1.79862509,  8.10392157, -0.228207  ,  4.83753243]])
+
+#+begin_src jupyter-python
+np.argmax(some_digit_score)
+#+end_src
+
+#+RESULTS:
+: 5
+
+*** One-vs-Rest (OvR) with SVM
+
+#+begin_src jupyter-python
+ovr_clf = OneVsRestClassifier(SVC(gamma='auto', random_state=42))
+ovr_clf.fit(X_train[:1000], y_train[:1000])
+ovr_clf.predict([some_digit])
+#+end_src
+
+#+RESULTS:
+: array([5], dtype=uint8)
+
+#+begin_src jupyter-python
+len(ovr_clf.estimators_)
+#+end_src
+
+#+RESULTS:
+: 10
+
+*** Native SGD multi-classification
+
+#+begin_src jupyter-python
+sgd_clf = SGDClassifier(loss='hinge', max_iter=1000, tol=1e-3, random_state=42)
+sgd_clf.fit(X_train, y_train)
+sgd_clf.predict([some_digit])
+#+end_src
+
+#+RESULTS:
+: array([3], dtype=uint8)
+
+#+begin_src jupyter-python
+sgd_clf.decision_function([some_digit])
+#+end_src
+
+#+RESULTS:
+: array([[-31893.03095419, -34419.69069632,  -9530.63950739,
+:           1823.73154031, -22320.14822878,  -1385.80478895,
+:         -26188.91070951, -16147.51323997,  -4604.35491274,
+:         -12050.767298  ]])
+
+#+begin_src jupyter-python
+cross_val_score(sgd_clf, X_train, y_train, cv=3, scoring='accuracy')
+#+end_src
+
+#+RESULTS:
+: array([0.87365, 0.85835, 0.8689 ])
+
+**** Improve SGD multi-classifier with scaled features
+
+#+begin_src jupyter-python
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train.astype(np.float64))
+some_digit_scaled = X_train_scaled[0]
+print('Scaled predict = ', sgd_clf.predict([some_digit_scaled]))
+print('Scaled cross val score of accuracy = ',
+      cross_val_score(sgd_clf, X_train_scaled, y_train, cv=3, scoring='accuracy'))
+#+end_src
+
+#+RESULTS:
+: Scaled predict =  [5]
+: Scaled cross val score of accuracy =  [0.8983 0.891  0.9018]
+
+
+* Error Analysis
+
+#+begin_src jupyter-python
+y_train_pred = cross_val_predict(sgd_clf, X_train_scaled, y_train, cv=3)
+conf_mx = confusion_matrix(y_train, y_train_pred)
+conf_mx
+#+end_src
+
+#+RESULTS:
+: array([[5577,    0,   22,    5,    8,   43,   36,    6,  225,    1],
+:        [   0, 6400,   37,   24,    4,   44,    4,    7,  212,   10],
+:        [  27,   27, 5220,   92,   73,   27,   67,   36,  378,   11],
+:        [  22,   17,  117, 5227,    2,  203,   27,   40,  403,   73],
+:        [  12,   14,   41,    9, 5182,   12,   34,   27,  347,  164],
+:        [  27,   15,   30,  168,   53, 4444,   75,   14,  535,   60],
+:        [  30,   15,   42,    3,   44,   97, 5552,    3,  131,    1],
+:        [  21,   10,   51,   30,   49,   12,    3, 5684,  195,  210],
+:        [  17,   63,   48,   86,    3,  126,   25,   10, 5429,   44],
+:        [  25,   18,   30,   64,  118,   36,    1,  179,  371, 5107]])
+
+*** Plot confusion matrix
+
+#+begin_src jupyter-python
+fig, ax = plt.subplots(figsize=(2,2))
+ax.matshow(conf_mx, cmap=plt.cm.gray);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/7b4d4c1d1fb31ecca490a0423a1f4509b84b81d5.png]]
+
+**** Normalize
+#+begin_src jupyter-python
+row_sums = conf_mx.sum(axis=1, keepdims=True)
+row_sums
+#+end_src
+
+#+RESULTS:
+: array([[5923],
+:        [6742],
+:        [5958],
+:        [6131],
+:        [5842],
+:        [5421],
+:        [5918],
+:        [6265],
+:        [5851],
+:        [5949]])
+
+#+begin_src jupyter-python
+print(conf_mx)
+norm_conf_mx = conf_mx / row_sums
+np.fill_diagonal(norm_conf_mx, 0)
+print(norm_conf_mx)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+[[5577    0   22    5    8   43   36    6  225    1]
+ [   0 6400   37   24    4   44    4    7  212   10]
+ [  27   27 5220   92   73   27   67   36  378   11]
+ [  22   17  117 5227    2  203   27   40  403   73]
+ [  12   14   41    9 5182   12   34   27  347  164]
+ [  27   15   30  168   53 4444   75   14  535   60]
+ [  30   15   42    3   44   97 5552    3  131    1]
+ [  21   10   51   30   49   12    3 5684  195  210]
+ [  17   63   48   86    3  126   25   10 5429   44]
+ [  25   18   30   64  118   36    1  179  371 5107]]
+[[0.         0.         0.00371433 0.00084417 0.00135067 0.00725983
+  0.006078   0.001013   0.03798751 0.00016883]
+ [0.         0.         0.00548799 0.00355977 0.0005933  0.00652625
+  0.0005933  0.00103827 0.03144468 0.00148324]
+ [0.00453172 0.00453172 0.         0.01544142 0.01225243 0.00453172
+  0.01124538 0.0060423  0.06344411 0.00184626]
+ [0.00358832 0.00277279 0.01908335 0.         0.00032621 0.03311042
+  0.00440385 0.00652422 0.06573153 0.0119067 ]
+ [0.00205409 0.00239644 0.00701814 0.00154057 0.         0.00205409
+  0.00581992 0.0046217  0.05939747 0.02807258]
+ [0.00498063 0.00276702 0.00553403 0.03099059 0.00977679 0.
+  0.01383509 0.00258255 0.09869028 0.01106807]
+ [0.00506928 0.00253464 0.00709699 0.00050693 0.00743494 0.01639067
+  0.         0.00050693 0.02213586 0.00016898]
+ [0.00335196 0.00159617 0.00814046 0.00478851 0.00782123 0.0019154
+  0.00047885 0.         0.0311253  0.03351955]
+ [0.00290549 0.01076739 0.00820373 0.01469834 0.00051273 0.02153478
+  0.00427277 0.00170911 0.         0.00752008]
+ [0.00420239 0.00302572 0.00504286 0.01075811 0.01983527 0.00605144
+  0.0001681  0.03008909 0.06236342 0.        ]]
+#+end_example
+
+#+begin_src jupyter-python
+fig, ax = plt.subplots(figsize=(1.5,1.5))
+ax.matshow(norm_conf_mx, cmap=plt.cm.gray);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/675b0ada100bb1c10a4957bfce38442b983005b9.png]]
+
+
+* Multilabel classification
+
+#+begin_src jupyter-python
+y_train_large = (y_train >= 7)
+y_train_odd = (y_train % 2 == 1)
+y_multilabel = np.c_[y_train_large, y_train_odd]
+
+knn_clf = KNeighborsClassifier()
+knn_clf.fit(X_train, y_multilabel)
+#+end_src
+
+#+RESULTS:
+: KNeighborsClassifier()
+
+#+begin_src jupyter-python
+knn_clf.predict([X_train[0]])
+#+end_src
+
+#+RESULTS:
+: array([[False,  True]])
+
+*** Evaluate by averaging scores over all individual labels
+#+begin_src jupyter-python
+y_train_knn_pred = cross_val_predict(knn_clf, X_train, y_multilabel, cv=3)
+f1_score(y_multilabel, y_train_knn_pred, average='macro')
+#+end_src
+
+#+RESULTS:
+: 0.976410265560605
+
+
+* Multioutput classification
+
+#+begin_src jupyter-python
+noise = np.random.randint(0, 100, (len(X_train), 784))
+X_train_mod = X_train + noise
+noise = np.random.randint(0, 100, (len(X_test), 784))
+X_test_mod = X_test + noise
+y_train_mod = X_train
+y_test_mod = X_test
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+some_index = 0
+fig, ax = plt.subplots(figsize=(2, 4))
+plt.subplot(121); plot_digit(X_test_mod[some_index])
+plt.subplot(122); plot_digit(y_test_mod[some_index])
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/ccb687fcd241f00d667e66bad1a202f7142362e7.png]]
+
+#+begin_src jupyter-python
+knn_clf.fit(X_train_mod, y_train_mod)
+clean_digit = knn_clf.predict([X_test_mod[some_index]])
+plt.figure(figsize=(2,2))
+plot_digit(clean_digit)
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/abcde45b77c8ef0039b6db0236e1ec253b36ee84.png]]
+
+
+
+* Exercises
+
+** 1. An Mnist Classifier with Over 97% Accuracy
+
+#+begin_src jupyter-python
+param_grid = [{
+    'weights': ['uniform', 'distance'],
+    'n_neighbors': [3, 4, 5],
+}]
+
+knn_clf = KNeighborsClassifier()
+grid_search = GridSearchCV(knn_clf, param_grid, scoring='accuracy', cv=5, verbose=3, n_jobs=6)
+grid_search.fit(X_train, y_train)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+: Fitting 5 folds for each of 6 candidates, totalling 30 fits
+: GridSearchCV(cv=5, estimator=KNeighborsClassifier(), n_jobs=6,
+:              param_grid=[{'n_neighbors': [3, 4, 5],
+:                           'weights': ['uniform', 'distance']}],
+:              scoring='accuracy', verbose=3)
+:END:
+
+#+begin_src jupyter-python
+print(grid_search.best_score_, grid_search.best_params_)
+#+end_src
+
+#+RESULTS:
+: 0.9716166666666666 {'n_neighbors': 4, 'weights': 'distance'}
+
+#+begin_src jupyter-python
+y_pred = grid_search.predict(X_test)
+accuracy_score(y_test, y_pred)
+#+end_src
+
+#+RESULTS:
+: 0.9714
+
+
+** 2. Data Augmentation
+
+#+begin_src jupyter-python
+from scipy.ndimage.interpolation import shift
+
+def shift_image(image, dx, dy):
+    image = image.reshape((28, 28))
+    shifted_image = shift(image, [dy, dx], cval=0, mode='constant')
+    return shifted_image.reshape([-1])
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+image = X_train[1000]
+shifted_image_down = shift_image(image, 0, 5)
+shifted_image_left = shift_image(image, -5, 0)
+
+plt.figure(figsize=(4, 1))
+plt.subplot(131)
+plt.title('original', fontsize=6)
+plt.imshow(image.reshape(28, 28), interpolation='nearest', cmap='Greys')
+plt.subplot(132)
+plt.title('shifted down', fontsize=6)
+plt.imshow(shifted_image_down.reshape(28, 28), interpolation='nearest', cmap='Greys')
+plt.subplot(133)
+plt.title('shifted left', fontsize=6)
+plt.imshow(shifted_image_left.reshape(28, 28), interpolation='nearest', cmap='Greys')
+
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+: <matplotlib.image.AxesImage at 0x7f332350cd60>
+[[file:./.ob-jupyter/8a5ecef2a5ed2c4cb33ddba750dd2804aed14adc.png]]
+:END:
+
+*Note*: Augmenting and training take long time...
+#+begin_src jupyter-python
+X_train_augmented, y_train_augmented = X_train.tolist(), y_train.tolist()
+for dx, dy in (1, 0), (-1, 0), (0, 1), (0, -1):
+    for image, label in zip(X_train, y_train):
+        X_train_augmented.append(shift_image(image, dx, dy))
+        y_train_augmented.append(label)
+
+shuffle_idx = np.random.permutation(len(X_train_augmented))
+# If do not want to convert to np.array: X_train_augmented = itemgetter(*shuffle_idx)(X_train_augmented)
+# which returns a tuple.
+X_train_augmented = np.array(X_train_augmented)[shuffle_idx]
+y_train_augmented = np.array(y_train_augmented)[shuffle_idx]
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+knn_clf = KNeighborsClassifier(**grid_search.best_params_)
+knn_clf.fit(X_train_augmented, y_train_augmented)
+#+end_src
+
+#+RESULTS:
+: KNeighborsClassifier(n_neighbors=4, weights='distance')
+
+#+begin_src jupyter-python
+y_pred = knn_clf.predict(X_test)
+accuracy_score(y_test, y_pred)
+#+end_src
+
+#+RESULTS:
+: 0.9763
