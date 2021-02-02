@@ -1,0 +1,495 @@
+#+TITLE: Practice Hands-on ML Chap06 - Decision Trees
+
+#+begin_src jupyter-python
+# Py data
+import numpy as np
+import pandas as pd
+from scipy import stats
+
+# Visualization
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import graphviz
+
+# Scikit-learn
+import sklearn
+
+# Data processing
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+
+# Metrics and model selection
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import ShuffleSplit
+
+# Models
+from sklearn.base import clone
+from sklearn import tree
+
+# matplotlib and sklearn config
+mpl.rc("figure", facecolor="white", dpi=120)
+sklearn.set_config(print_changed_only=False)
+#+end_src
+
+#+RESULTS:
+
+
+* Training and visualizing
+
+#+begin_src jupyter-python
+iris = sklearn.datasets.load_iris()
+X = iris['data'][:, 2:]  # petal length and width
+y = iris['target']
+
+tree_clf = tree.DecisionTreeClassifier(max_depth=2, random_state=42)
+tree_clf.fit(X, y)
+#+end_src
+
+#+RESULTS:
+: DecisionTreeClassifier(ccp_alpha=0.0, class_weight=None, criterion='gini',
+:                        max_depth=2, max_features=None, max_leaf_nodes=None,
+:                        min_impurity_decrease=0.0, min_impurity_split=None,
+:                        min_samples_leaf=1, min_samples_split=2,
+:                        min_weight_fraction_leaf=0.0, random_state=42,
+:                        splitter='best')
+
+#+begin_src jupyter-python
+# https://stackoverflow.com/questions/27817994/visualizing-decision-tree-in-scikit-learn
+graph = graphviz.Source(
+    tree.export_graphviz(
+        tree_clf,
+        feature_names=iris.feature_names[2:],
+        class_names=iris.target_names,
+        filled=True,
+        rounded=True,
+    )
+)
+graph
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/52b34591910cca47e348586f063887e99e9a1bfa.svg]]
+
+
+* Estimating Class Probabilities and Making Predictions
+
+#+begin_src jupyter-python
+print(tree_clf.predict_proba([[5, 1.5]]))
+print(tree_clf.predict([[5, 1.5]]))
+#+end_src
+
+#+RESULTS:
+: [[0.         0.90740741 0.09259259]]
+: [1]
+
+
+* Sensitive to Training Set Details
+** Simple Predictions
+#+begin_src jupyter-python
+def plot_decision_boundary(clf, X, y, axes=[0, 7.5, 0, 3], iris=True, legend=False, plot_training=True):
+    x1s = np.linspace(axes[0], axes[1], 100)
+    x2s = np.linspace(axes[2], axes[3], 100)
+    x1, x2 = np.meshgrid(x1s, x2s)
+    X_new = np.c_[x1.ravel(), x2.ravel()]
+    y_pred = clf.predict(X_new).reshape(x1.shape)
+    custom_cmap = mpl.colors.ListedColormap(['#fafab0','#9898ff','#a0faa0'])
+    plt.contourf(x1, x2, y_pred, alpha=0.3, cmap=custom_cmap)
+    if not iris:
+        custom_cmap2 = mpl.colors.ListedColormap(['#7d7d58','#4c4c7f','#507d50'])
+        plt.contour(x1, x2, y_pred, cmap=custom_cmap2, alpha=0.8)
+    if plot_training:
+        plt.plot(X[:, 0][y==0], X[:, 1][y==0], "yo", label="Iris setosa")
+        plt.plot(X[:, 0][y==1], X[:, 1][y==1], "bs", label="Iris versicolor")
+        plt.plot(X[:, 0][y==2], X[:, 1][y==2], "g^", label="Iris virginica")
+        plt.axis(axes)
+    if iris:
+        plt.xlabel("Petal length", fontsize=14)
+        plt.ylabel("Petal width", fontsize=14)
+    else:
+        plt.xlabel(r"$x_1$", fontsize=18)
+        plt.ylabel(r"$x_2$", fontsize=18, rotation=0)
+    if legend:
+        plt.legend(loc="lower right", fontsize=14)
+
+plt.figure(figsize=(8, 4))
+plot_decision_boundary(tree_clf, X, y)
+plt.plot([2.45, 2.45], [0, 3], "k-", linewidth=2)
+plt.plot([2.45, 7.5], [1.75, 1.75], "k--", linewidth=2)
+plt.plot([4.95, 4.95], [0, 1.75], "k:", linewidth=2)
+plt.plot([4.85, 4.85], [1.75, 3], "k:", linewidth=2)
+plt.text(1.40, 1.0, "Depth=0", fontsize=15)
+plt.text(3.2, 1.80, "Depth=1", fontsize=13)
+plt.text(4.05, 0.5, "(Depth=2)", fontsize=11);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/7a916f3195b4d49c3f8de6e549fee2dcb4556b54.png]]
+
+
+** One data point removed
+
+#+begin_src jupyter-python
+width_max = X[:, 1][y==1].max()
+X[(X[:, 1]==width_max) & (y==1)] # widest Iris versicolor flower
+#+end_src
+
+#+RESULTS:
+: array([[4.8, 1.8]])
+
+#+begin_src jupyter-python
+not_widest_versicolor = (X[:, 1]!=1.8) | (y==2)
+X_tweaked = X[not_widest_versicolor]
+y_tweaked = y[not_widest_versicolor]
+
+tree_clf_tweaked = tree.DecisionTreeClassifier(max_depth=2, random_state=40)
+tree_clf_tweaked.fit(X_tweaked, y_tweaked)
+#+end_src
+
+#+RESULTS:
+: DecisionTreeClassifier(ccp_alpha=0.0, class_weight=None, criterion='gini',
+:                        max_depth=2, max_features=None, max_leaf_nodes=None,
+:                        min_impurity_decrease=0.0, min_impurity_split=None,
+:                        min_samples_leaf=1, min_samples_split=2,
+:                        min_weight_fraction_leaf=0.0, random_state=40,
+:                        splitter='best')
+
+#+begin_src jupyter-python
+plt.figure(figsize=(8, 4))
+plot_decision_boundary(tree_clf_tweaked, X_tweaked, y_tweaked, legend=False)
+plt.plot([0, 7.5], [0.8, 0.8], "k-", linewidth=2)
+plt.plot([0, 7.5], [1.75, 1.75], "k--", linewidth=2)
+plt.text(1.0, 0.9, "Depth=0", fontsize=15)
+plt.text(1.0, 1.80, "Depth=1", fontsize=13);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/2f88766df85c424e3674e67b9c7fb61cbb9ffe0d.png]]
+
+
+** Moon Set Overfitting
+
+#+begin_src jupyter-python
+Xm, ym = sklearn.datasets.make_moons(n_samples=100, noise=0.25, random_state=53)
+
+deep_tree_clf1 = tree.DecisionTreeClassifier(random_state=42)
+deep_tree_clf2 = tree.DecisionTreeClassifier(min_samples_leaf=4, random_state=42)
+deep_tree_clf1.fit(Xm, ym)
+deep_tree_clf2.fit(Xm, ym)
+
+fig, axes = plt.subplots(ncols=2, figsize=(10, 4), sharey=True)
+plt.sca(axes[0])
+plot_decision_boundary(deep_tree_clf1, Xm, ym, axes=[-1.5, 2.4, -1, 1.5], iris=False)
+plt.title("No restrictions", fontsize=16)
+plt.sca(axes[1])
+plot_decision_boundary(deep_tree_clf2, Xm, ym, axes=[-1.5, 2.4, -1, 1.5], iris=False)
+plt.title("min_samples_leaf = {}".format(deep_tree_clf2.min_samples_leaf), fontsize=14)
+plt.ylabel("");
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/f2b994bc38388d553a82c70cc253eacfbd97648c.png]]
+
+
+** Training Data Rotation
+
+#+begin_src jupyter-python
+angle = np.pi / 180 * 20
+rotation_matrix = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
+Xr = X.dot(rotation_matrix)
+
+tree_clf_r = tree.DecisionTreeClassifier(random_state=42)
+tree_clf_r.fit(Xr, y)
+
+plt.figure(figsize=(8, 3))
+plot_decision_boundary(tree_clf_r, Xr, y, axes=[0.5, 7.5, -1.0, 1], iris=False)
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/c7358bab586953cbc5bac645018613b6bb7519eb.png]]
+
+#+begin_src jupyter-python
+np.random.seed(6)
+Xs = np.random.rand(100, 2) - 0.5
+ys = (Xs[:, 0] > 0).astype(np.float32) * 2
+
+angle = np.pi / 4
+rotation_matrix = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
+Xsr = Xs.dot(rotation_matrix)
+
+tree_clf_s = tree.DecisionTreeClassifier(random_state=42)
+tree_clf_s.fit(Xs, ys)
+tree_clf_sr = tree.DecisionTreeClassifier(random_state=42)
+tree_clf_sr.fit(Xsr, ys)
+
+fig, axes = plt.subplots(ncols=2, figsize=(10, 4), sharey=True)
+plt.sca(axes[0])
+plot_decision_boundary(tree_clf_s, Xs, ys, axes=[-0.7, 0.7, -0.7, 0.7], iris=False)
+plt.sca(axes[1])
+plot_decision_boundary(tree_clf_sr, Xsr, ys, axes=[-0.7, 0.7, -0.7, 0.7], iris=False)
+plt.ylabel("");
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/dc61b8ca57c183beef74dc6c3b607e415ffc0cd9.png]]
+
+
+* Regression Trees
+
+#+begin_src jupyter-python
+
+
+# Quadratic training set + noise
+np.random.seed(42)
+m = 200
+X = np.random.rand(m, 1)
+y = 4 * (X - 0.5) ** 2
+y = y + np.random.randn(m, 1) / 10
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+tree_reg = tree.DecisionTreeRegressor(max_depth=2, random_state=42)
+tree_reg.fit(X, y)
+#+end_src
+
+#+RESULTS:
+: DecisionTreeRegressor(ccp_alpha=0.0, criterion='mse', max_depth=2,
+:                       max_features=None, max_leaf_nodes=None,
+:                       min_impurity_decrease=0.0, min_impurity_split=None,
+:                       min_samples_leaf=1, min_samples_split=2,
+:                       min_weight_fraction_leaf=0.0, random_state=42,
+:                       splitter='best')
+
+#+begin_src jupyter-python
+tree_reg1 = tree.DecisionTreeRegressor(random_state=42, max_depth=2)
+tree_reg2 = tree.DecisionTreeRegressor(random_state=42, max_depth=3)
+tree_reg1.fit(X, y)
+tree_reg2.fit(X, y)
+
+
+def plot_regression_predictions(tree_reg, X, y, axes=[0, 1, -0.2, 1], ylabel="$y$"):
+    x1 = np.linspace(axes[0], axes[1], 500).reshape(-1, 1)
+    y_pred = tree_reg.predict(x1)
+    plt.axis(axes)
+    plt.xlabel("$x_1$", fontsize=18)
+    if ylabel:
+        plt.ylabel(ylabel, fontsize=18, rotation=0)
+    plt.plot(X, y, "b.")
+    plt.plot(x1, y_pred, "r.-", linewidth=2, label=r"$\hat{y}$")
+
+
+fig, axes = plt.subplots(ncols=2, figsize=(10, 4), sharey=True)
+plt.sca(axes[0])
+plot_regression_predictions(tree_reg1, X, y)
+for split, style in ((0.1973, "k-"), (0.0917, "k--"), (0.7718, "k--")):
+    plt.plot([split, split], [-0.2, 1], style, linewidth=2)
+plt.text(0.21, 0.65, "Depth=0", fontsize=15)
+plt.text(0.01, 0.2, "Depth=1", fontsize=13)
+plt.text(0.65, 0.8, "Depth=1", fontsize=13)
+plt.legend(loc="upper center", fontsize=18)
+plt.title("max_depth=2", fontsize=14)
+
+plt.sca(axes[1])
+plot_regression_predictions(tree_reg2, X, y, ylabel=None)
+for split, style in ((0.1973, "k-"), (0.0917, "k--"), (0.7718, "k--")):
+    plt.plot([split, split], [-0.2, 1], style, linewidth=2)
+for split in (0.0458, 0.1298, 0.2873, 0.9040):
+    plt.plot([split, split], [-0.2, 1], "k:", linewidth=1)
+plt.text(0.3, 0.5, "Depth=2", fontsize=13)
+plt.title("max_depth=3", fontsize=14);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/e0b9395848d6f74e1e51ebdd6a3656fef971d725.png]]
+
+#+begin_src jupyter-python
+graph = graphviz.Source(tree.export_graphviz(
+        tree_reg1,
+        feature_names=["x1"],
+        rounded=True,
+        filled=True
+    )
+)
+graph
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/c49f1610c30ae783a7d30f4e27cc1d07cd8859f1.svg]]
+
+#+begin_src jupyter-python
+tree_reg1 = tree.DecisionTreeRegressor(random_state=42)
+tree_reg2 = tree.DecisionTreeRegressor(random_state=42, min_samples_leaf=10)
+tree_reg1.fit(X, y)
+tree_reg2.fit(X, y)
+
+x1 = np.linspace(0, 1, 500).reshape(-1, 1)
+y_pred1 = tree_reg1.predict(x1)
+y_pred2 = tree_reg2.predict(x1)
+
+fig, axes = plt.subplots(ncols=2, figsize=(10, 4), sharey=True)
+
+plt.sca(axes[0])
+plt.plot(X, y, "b.")
+plt.plot(x1, y_pred1, "r.-", linewidth=2, label=r"$\hat{y}$")
+plt.axis([0, 1, -0.2, 1.1])
+plt.xlabel("$x_1$", fontsize=18)
+plt.ylabel("$y$", fontsize=18, rotation=0)
+plt.legend(loc="upper center", fontsize=18)
+plt.title("No restrictions", fontsize=14)
+
+plt.sca(axes[1])
+plt.plot(X, y, "b.")
+plt.plot(x1, y_pred2, "r.-", linewidth=2, label=r"$\hat{y}$")
+plt.axis([0, 1, -0.2, 1.1])
+plt.xlabel("$x_1$", fontsize=18)
+plt.title("min_samples_leaf={}".format(tree_reg2.min_samples_leaf), fontsize=14);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/ddc66a1c542bd4a40724ffd589d39b467c828b85.png]]
+
+
+* Exercises
+
+** 7. Train and fine-tune a decision tree for the moons dataset.
+*** a. Generate data
+
+#+begin_src jupyter-python
+X, y = sklearn.datasets.make_moons(n_samples=10000, noise=0.4, random_state=42)
+#+end_src
+
+#+RESULTS:
+
+*** b. Split train/test
+#+begin_src jupyter-python
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+#+end_src
+
+#+RESULTS:
+
+*** c. Use grid search with cross-validation (with the help of the ~GridSearchCV~ class) to find good hyperparameter values for a ~DecisionTreeClassifier~.
+Hint: try various values for ~max_leaf_nodes~.
+
+#+begin_src jupyter-python
+params = {
+    'max_leaf_nodes': range(2, 100),
+    'min_samples_split': range(2, 11),
+}
+grid_search_cv = GridSearchCV(tree.DecisionTreeClassifier(random_state=42), params, verbose=1, cv=3)
+grid_search_cv.fit(X_train, y_train)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+: Fitting 3 folds for each of 882 candidates, totalling 2646 fits
+#+begin_example
+GridSearchCV(cv=3, error_score=nan,
+             estimator=DecisionTreeClassifier(ccp_alpha=0.0, class_weight=None,
+                                              criterion='gini', max_depth=None,
+                                              max_features=None,
+                                              max_leaf_nodes=None,
+                                              min_impurity_decrease=0.0,
+                                              min_impurity_split=None,
+                                              min_samples_leaf=1,
+                                              min_samples_split=2,
+                                              min_weight_fraction_leaf=0.0,
+                                              random_state=42,
+                                              splitter='best'),
+             n_jobs=None,
+             param_grid={'max_leaf_nodes': range(2, 100),
+                         'min_samples_split': range(2, 11)},
+             pre_dispatch='2*n_jobs', refit=True, return_train_score=False,
+             scoring=None, verbose=1)
+#+end_example
+:END:
+
+#+begin_src jupyter-python
+grid_search_cv.best_estimator_
+#+end_src
+
+#+RESULTS:
+: DecisionTreeClassifier(ccp_alpha=0.0, class_weight=None, criterion='gini',
+:                        max_depth=None, max_features=None, max_leaf_nodes=17,
+:                        min_impurity_decrease=0.0, min_impurity_split=None,
+:                        min_samples_leaf=1, min_samples_split=2,
+:                        min_weight_fraction_leaf=0.0, random_state=42,
+:                        splitter='best')
+
+*** d. Train it on the full training set using these hyperparameters, and measure your model's performance on the test set. You should get roughly 85% to 87% accuracy.
+
+By default, GridSearchCV trains the best model found on the whole training set (you can change this by setting refit=False), so we don't need to do it again. We can simply evaluate the model's accuracy:
+#+begin_src jupyter-python
+y_pred = grid_search_cv.predict(X_test)
+for score_func in [accuracy_score, precision_score, recall_score, f1_score]:
+    score = score_func(y_test, y_pred)
+    print(f"{score_func.__name__} = {score:.4f}")
+#+end_src
+
+#+RESULTS:
+: accuracy_score = 0.8695
+: precision_score = 0.8758
+: recall_score = 0.8571
+: f1_score = 0.8664
+
+
+** 8. Grow a forest
+*** a. Continuing the previous exercise, generate 1,000 subsets of the training set, each containing 100 instances selected randomly. Hint: you can use Scikit-Learn’s ~ShuffleSplit~ class for this.
+
+#+begin_src jupyter-python
+n_trees = 1000
+N = 100
+mini_sets = []
+rs = ShuffleSplit(n_splits=n_trees, test_size=len(X_train)-N, random_state=42)
+for mini_train_index, mini_test_index in rs.split(X_train):
+    X_mini_train = X_train[mini_train_index]
+    y_mini_train = y_train[mini_train_index]
+    mini_sets.append((X_mini_train, y_mini_train))
+#+end_src
+
+#+RESULTS:
+
+*** b. Train one Decision Tree on each subset, using the best hyperparameter values found above. Evaluate these 1,000 Decision Trees on the test set. Since they were trained on smaller sets, these Decision Trees will likely perform worse than the first Decision Tree, achieving only about 80% accuracy.
+
+#+begin_src jupyter-python
+forest = [clone(grid_search_cv.best_estimator_) for _ in range(n_trees)]
+accuracies = []
+for tree, (X_mini_train, y_mini_train) in zip(forest, mini_sets):
+    tree.fit(X_mini_train, y_mini_train)
+    y_pred = tree.predict(X_test)
+    accuracies.append(accuracy_score(y_pred, y_test))
+print(np.mean(accuracies))
+
+#+end_src
+
+#+RESULTS:
+: 0.8054499999999999
+
+*** c. Now comes the magic. For each test set instance, generate the predictions of the 1,000 Decision Trees, and keep only the most frequent prediction (you can use SciPy’s ~mode()~ function for this). This approach gives you majority-vote predictions over the test set.
+
+#+begin_src jupyter-python
+Y_pred = np.empty([n_trees, len(X_test)], dtype=np.uint8)
+for tree_index, tree in enumerate(forest):
+    Y_pred[tree_index] = tree.predict(X_test)
+y_pred_majority_votes, n_votes = stats.mode(Y_pred, axis=0)
+y_pred_majority_votes[:10], n_votes[:10]
+#+end_src
+
+#+RESULTS:
+| array | (((1 1 0 ... 0 0 0)) dtype=uint8) | array | (((951 912 963 ... 919 994 602))) |
+
+*** d. Evaluate these predictions on the test set: you should obtain a slightly higher accuracy than your first model (about 0.5 to 1.5% higher). Congratulations, you have trained a Random Forest classifier!
+
+#+begin_src jupyter-python
+for score_func in [accuracy_score, precision_score, recall_score, f1_score]:
+    score = score_func(y_test, y_pred_majority_votes.reshape([-1]))
+    print(f"{score_func.__name__} = {score:.4f}")
+#+end_src
+
+#+RESULTS:
+: accuracy_score = 0.8720
+: precision_score = 0.8688
+: recall_score = 0.8723
+: f1_score = 0.8706
