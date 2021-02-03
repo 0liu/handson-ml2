@@ -1,0 +1,1044 @@
+#+TITLE: Practice Hands-on ML Chap07 - Ensemble Learning and Random Forests
+
+#+begin_src jupyter-python
+# Py data
+import numpy as np
+import pandas as pd
+from scipy import stats
+
+# Visualization
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+
+# Scikit-learn
+import sklearn
+from sklearn.datasets import make_moons
+
+# Data processing
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+
+# Metrics and model selection
+from sklearn.metrics import mean_squared_error
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
+# Models
+from sklearn.base import clone
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import LinearSVC, SVC
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+from sklearn.ensemble import VotingClassifier, BaggingClassifier
+from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier
+from sklearn.ensemble import AdaBoostClassifier, GradientBoostingRegressor
+import xgboost
+from sklearn.neural_network import MLPClassifier
+
+# matplotlib and sklearn config
+mpl.rc("axes", labelsize=5, linewidth=0.3)
+mpl.rc("xtick", labelsize=5)
+mpl.rc("ytick", labelsize=5)
+mpl.rc("legend", fontsize=4, fancybox=True)
+mpl.rc("figure", facecolor="white", dpi=120)
+
+sklearn.set_config(print_changed_only=False)
+#+end_src
+
+#+RESULTS:
+
+
+* Voting Classifiers
+
+- Coin Heads by Law of Large Numbers
+
+#+begin_src jupyter-python
+heads_proba = 0.51
+coin_tosses = (np.random.rand(10000, 10) < heads_proba).astype(np.int32)
+cumulative_heads_ratio = (
+    np.cumsum(coin_tosses, axis=0) / np.arange(1, 10001).reshape(-1, 1))
+
+plt.figure(figsize=(3, 1.5))
+plt.plot(cumulative_heads_ratio, linewidth=0.4)
+plt.plot([0, 10000], [0.51, 0.51], "k--", linewidth=0.8, label="51%")
+plt.plot([0, 10000], [0.5, 0.5], "k-", linewidth=0.8, label="50%", alpha=0.5)
+plt.xlabel("Number of coin tosses")
+plt.ylabel("Heads ratio")
+plt.legend(loc="lower right")
+plt.axis([0, 10000, 0.42, 0.58]);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/0a34cf3e62a18c2fb4b9548b37d1793b04917bed.png]]
+
+- Hard voting classifiers on moon data sets
+
+#+begin_src jupyter-python
+X, y = make_moons(n_samples=500, noise=0.3, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+log_clf = LogisticRegression(solver='lbfgs', random_state=42)
+rnd_clf = RandomForestClassifier(n_estimators=100, random_state=42)
+svm_clf = SVC(gamma="scale", random_state=42)
+
+voting_clf = VotingClassifier(
+    estimators=[('lr', log_clf), ('rf', rnd_clf), ('svc', svm_clf)],
+    voting='hard'
+)
+voting_clf.fit(X_train, y_train)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+VotingClassifier(estimators=[('lr',
+                              LogisticRegression(C=1.0, class_weight=None,
+                                                 dual=False, fit_intercept=True,
+                                                 intercept_scaling=1,
+                                                 l1_ratio=None, max_iter=100,
+                                                 multi_class='auto',
+                                                 n_jobs=None, penalty='l2',
+                                                 random_state=42,
+                                                 solver='lbfgs', tol=0.0001,
+                                                 verbose=0, warm_start=False)),
+                             ('rf',
+                              RandomForestClassifier(bootstrap=True,
+                                                     ccp_alpha=0.0,
+                                                     class_weight=None,
+                                                     crit...
+                                                     random_state=42, verbose=0,
+                                                     warm_start=False)),
+                             ('svc',
+                              SVC(C=1.0, break_ties=False, cache_size=200,
+                                  class_weight=None, coef0=0.0,
+                                  decision_function_shape='ovr', degree=3,
+                                  gamma='scale', kernel='rbf', max_iter=-1,
+                                  probability=False, random_state=42,
+                                  shrinking=True, tol=0.001, verbose=False))],
+                 flatten_transform=True, n_jobs=None, verbose=False,
+                 voting='hard', weights=None)
+#+end_example
+
+#+begin_src jupyter-python
+for clf in log_clf, rnd_clf, svm_clf, voting_clf:
+    clf.fit(X_train, y_train)
+    y_pred = clf.predict(X_test)
+    print(clf.__class__.__name__, accuracy_score(y_test, y_pred))
+#+end_src
+
+#+RESULTS:
+: LogisticRegression 0.864
+: RandomForestClassifier 0.896
+: SVC 0.896
+: VotingClassifier 0.912
+
+- Soft voting
+
+#+begin_src jupyter-python
+log_clf = LogisticRegression(solver='lbfgs', random_state=42)
+rnd_clf = RandomForestClassifier(n_estimators=100, random_state=42)
+svm_clf = SVC(gamma="scale", probability=True, random_state=42)
+
+voting_clf = VotingClassifier(
+    estimators=[('lr', log_clf), ('rf', rnd_clf), ('svc', svm_clf)],
+    voting='soft'
+)
+voting_clf.fit(X_train, y_train)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+VotingClassifier(estimators=[('lr',
+                              LogisticRegression(C=1.0, class_weight=None,
+                                                 dual=False, fit_intercept=True,
+                                                 intercept_scaling=1,
+                                                 l1_ratio=None, max_iter=100,
+                                                 multi_class='auto',
+                                                 n_jobs=None, penalty='l2',
+                                                 random_state=42,
+                                                 solver='lbfgs', tol=0.0001,
+                                                 verbose=0, warm_start=False)),
+                             ('rf',
+                              RandomForestClassifier(bootstrap=True,
+                                                     ccp_alpha=0.0,
+                                                     class_weight=None,
+                                                     crit...
+                                                     random_state=42, verbose=0,
+                                                     warm_start=False)),
+                             ('svc',
+                              SVC(C=1.0, break_ties=False, cache_size=200,
+                                  class_weight=None, coef0=0.0,
+                                  decision_function_shape='ovr', degree=3,
+                                  gamma='scale', kernel='rbf', max_iter=-1,
+                                  probability=True, random_state=42,
+                                  shrinking=True, tol=0.001, verbose=False))],
+                 flatten_transform=True, n_jobs=None, verbose=False,
+                 voting='soft', weights=None)
+#+end_example
+
+#+begin_src jupyter-python
+for clf in log_clf, rnd_clf, svm_clf, voting_clf:
+    clf.fit(X_train, y_train)
+    y_pred = clf.predict(X_test)
+    print(clf.__class__.__name__, accuracy_score(y_pred, y_test))
+#+end_src
+
+#+RESULTS:
+: LogisticRegression 0.864
+: RandomForestClassifier 0.896
+: SVC 0.896
+: VotingClassifier 0.92
+
+
+* Bagging Ensembles
+
+#+begin_src jupyter-python
+len(X_train)
+#+end_src
+
+#+RESULTS:
+: 375
+
+#+begin_src jupyter-python
+bag_clf = BaggingClassifier(
+    DecisionTreeClassifier(random_state=42),
+    n_estimators=500,
+    max_samples=100,  # 100 samples from 375 training instances
+    bootstrap=True,  # set to False for pasting
+    random_state=42
+)
+bag_clf.fit(X_train, y_train)
+y_pred = bag_clf.predict(X_test)
+accuracy_score(y_test, y_pred)
+#+end_src
+
+#+RESULTS:
+: 0.904
+
+#+begin_src jupyter-python
+tree_clf = DecisionTreeClassifier(random_state=42)
+tree_clf.fit(X_train, y_train)
+y_pred_tree = tree_clf.predict(X_test)
+print(accuracy_score(y_test, y_pred_tree))
+#+end_src
+
+#+RESULTS:
+: 0.856
+
+#+begin_src jupyter-python
+def plot_decision_boundary(clf, X, y, axes=[-1.5, 2.45, -1, 1.5], alpha=0.5, contour=True):
+    x1s = np.linspace(axes[0], axes[1], 100)
+    x2s = np.linspace(axes[2], axes[3], 100)
+    x1, x2 = np.meshgrid(x1s, x2s)
+    X_new = np.c_[x1.ravel(), x2.ravel()]
+    y_pred = clf.predict(X_new).reshape(x1.shape)
+    custom_cmap = mpl.colors.ListedColormap(['#fafab0','#9898ff','#a0faa0'])
+    plt.contourf(x1, x2, y_pred, alpha=0.3, cmap=custom_cmap)
+    if contour:
+        custom_cmap2 = mpl.colors.ListedColormap(['#7d7d58','#4c4c7f','#507d50'])
+        plt.contour(x1, x2, y_pred, cmap=custom_cmap2, alpha=0.8)
+    plt.plot(X[:, 0][y==0], X[:, 1][y==0], "yo", alpha=alpha)
+    plt.plot(X[:, 0][y==1], X[:, 1][y==1], "bs", alpha=alpha)
+    plt.axis(axes)
+    plt.xlabel(r"$x_1$", fontsize=18)
+    plt.ylabel(r"$x_2$", fontsize=18, rotation=0)
+
+fix, axes = plt.subplots(ncols=2, figsize=(12,4), sharey=True)
+plt.sca(axes[0])
+plot_decision_boundary(tree_clf, X, y)
+plt.title("Decision Tree", fontsize=10)
+plt.sca(axes[1])
+plot_decision_boundary(bag_clf, X, y)
+plt.title("Decision Trees with Bagging", fontsize=10)
+plt.ylabel("");
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/abdbd3e4721afb9f6bb742bfe1341e996978eaa5.png]]
+
+
+- Out-of-Bag evalualtion
+
+#+begin_src jupyter-python
+bag_clf = BaggingClassifier(
+    DecisionTreeClassifier(random_state=42),
+    n_estimators=500,
+    bootstrap=True,
+    oob_score=True,
+    random_state=40
+)
+bag_clf.fit(X_train, y_train)
+bag_clf.oob_score_
+#+end_src
+
+#+RESULTS:
+: 0.8986666666666666
+
+#+begin_src jupyter-python
+bag_clf.oob_decision_function_[:10]
+#+end_src
+
+#+RESULTS:
+: array([[0.32275132, 0.67724868],
+:        [0.34117647, 0.65882353],
+:        [1.        , 0.        ],
+:        [0.        , 1.        ],
+:        [0.        , 1.        ],
+:        [0.09497207, 0.90502793],
+:        [0.31147541, 0.68852459],
+:        [0.01754386, 0.98245614],
+:        [0.97109827, 0.02890173],
+:        [0.97765363, 0.02234637]])
+
+#+begin_src jupyter-python
+y_pred = bag_clf.predict(X_test)
+accuracy_score(y_test, y_pred)
+#+end_src
+
+#+RESULTS:
+: 0.912
+
+* Random Forests
+
+- Emulate RandomForestClassifier with BaggingClassifier by setting splitter=random to obtain extra randomness.
+
+#+begin_src jupyter-python
+bag_clf = BaggingClassifier(
+    DecisionTreeClassifier(splitter='random', max_leaf_nodes=16, random_state=42),
+    n_estimators=500, max_samples=1.0, bootstrap=True, random_state=42
+)
+bag_clf.fit(X_train, y_train)
+y_pred = bag_clf.predict(X_test)
+
+rnd_clf = RandomForestClassifier(n_estimators=500, max_leaf_nodes=16, random_state=42)
+rnd_clf.fit(X_train, y_train)
+y_pred_rf = rnd_clf.predict(X_test)
+
+np.sum(y_pred == y_pred_rf) / len(y_pred)  # 97.6% identical predictions
+#+end_src
+
+#+RESULTS:
+: 0.976
+
+- Plot decision boundaries of each tree
+
+#+begin_src jupyter-python
+plt.figure(figsize=(6, 4))
+
+for i in range(15):
+    tree_clf = DecisionTreeClassifier(max_leaf_nodes=16, random_state=42 + i)
+    indices_with_replacement = np.random.randint(0, len(X_train), len(X_train))
+    tree_clf.fit(X[indices_with_replacement], y[indices_with_replacement])
+    plot_decision_boundary(tree_clf, X, y, axes=[-1.5, 2.45, -1, 1.5], alpha=0.02, contour=False)
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/ce40e61212278e59b44dd9755125cc28fd67808b.png]]
+
+
+- Feature importance
+
+#+begin_src jupyter-python
+iris = sklearn.datasets.load_iris()
+rnd_clf = RandomForestClassifier(n_estimators=500, random_state=42)
+rnd_clf.fit(iris["data"], iris["target"])
+for name, score in zip(iris["feature_names"], rnd_clf.feature_importances_):
+    print(name, score)
+#+end_src
+
+#+RESULTS:
+: sepal length (cm) 0.11249225099876375
+: sepal width (cm) 0.02311928828251033
+: petal length (cm) 0.4410304643639577
+: petal width (cm) 0.4233579963547682
+
+#+begin_src jupyter-python
+mnist = sklearn.datasets.fetch_openml('mnist_784', version=1)
+mnist.target = mnist.target.astype(np.uint8)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+rnd_clf = RandomForestClassifier(n_estimators=100, random_state=42)
+rnd_clf.fit(mnist['data'], mnist['target'])
+#+end_src
+
+#+RESULTS:
+: RandomForestClassifier(bootstrap=True, ccp_alpha=0.0, class_weight=None,
+:                        criterion='gini', max_depth=None, max_features='auto',
+:                        max_leaf_nodes=None, max_samples=None,
+:                        min_impurity_decrease=0.0, min_impurity_split=None,
+:                        min_samples_leaf=1, min_samples_split=2,
+:                        min_weight_fraction_leaf=0.0, n_estimators=100,
+:                        n_jobs=None, oob_score=False, random_state=42, verbose=0,
+:                        warm_start=False)
+
+#+begin_src jupyter-python
+
+
+def plot_digit(data):
+    image = data.reshape(28, 28)
+    plt.imshow(image, cmap = mpl.cm.hot,
+               interpolation="nearest")
+    plt.axis("off")
+
+plot_digit(rnd_clf.feature_importances_)
+
+cbar = plt.colorbar(ticks=[rnd_clf.feature_importances_.min(), rnd_clf.feature_importances_.max()])
+cbar.ax.set_yticklabels(['Not important', 'Very important']);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/fac268a5ee6b1d580067e43f0261f8c21d9ba90c.png]]
+
+
+* Boosting
+
+** AdaBoost
+
+#+begin_src jupyter-python
+ada_clf = AdaBoostClassifier(
+    DecisionTreeClassifier(max_depth=1),
+    n_estimators=200,
+    algorithm="SAMME.R",
+    learning_rate=0.5,
+    random_state=42
+)
+ada_clf.fit(X_train, y_train)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+AdaBoostClassifier(algorithm='SAMME.R',
+                   base_estimator=DecisionTreeClassifier(ccp_alpha=0.0,
+                                                         class_weight=None,
+                                                         criterion='gini',
+                                                         max_depth=1,
+                                                         max_features=None,
+                                                         max_leaf_nodes=None,
+                                                         min_impurity_decrease=0.0,
+                                                         min_impurity_split=None,
+                                                         min_samples_leaf=1,
+                                                         min_samples_split=2,
+                                                         min_weight_fraction_leaf=0.0,
+                                                         random_state=None,
+                                                         splitter='best'),
+                   learning_rate=0.5, n_estimators=200, random_state=42)
+#+end_example
+
+#+begin_src jupyter-python
+plot_decision_boundary(ada_clf, X, y)
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/c453da76c7428661f89f52aa750c965002b9f772.png]]
+
+
+- Comparing learning rate
+
+#+begin_src jupyter-python
+m = len(X_train)
+
+fix, axes = plt.subplots(ncols=2, figsize=(10,4), sharey=True)
+for subplot, learning_rate in ((0, 1), (1, 0.5)):
+    sample_weights = np.ones(m)
+    plt.sca(axes[subplot])
+    for i in range(5):
+        svm_clf = SVC(kernel="rbf", C=0.05, gamma="scale", random_state=42)
+        svm_clf.fit(X_train, y_train, sample_weight=sample_weights)
+        y_pred = svm_clf.predict(X_train)
+        sample_weights[y_pred != y_train] *= (1 + learning_rate)
+        plot_decision_boundary(svm_clf, X, y, alpha=0.2)
+        plt.title("learning_rate = {}".format(learning_rate), fontsize=16)
+    if subplot == 0:
+        plt.text(-0.7, -0.65, "1", fontsize=14)
+        plt.text(-0.6, -0.10, "2", fontsize=14)
+        plt.text(-0.5,  0.10, "3", fontsize=14)
+        plt.text(-0.4,  0.55, "4", fontsize=14)
+        plt.text(-0.3,  0.90, "5", fontsize=14)
+    else:
+        plt.ylabel("")
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/f26293d2b50baf98cd5c7181e11b916c963c7fb5.png]]
+
+
+** Gradient Boosting
+
+*** Boosting process
+
+#+begin_src jupyter-python
+np.random.seed(42)
+X = np.random.rand(100, 1) - 0.5
+y = 3*X[:, 0]**2 + 0.05 * np.random.randn(100)
+
+tree_reg1 = DecisionTreeRegressor(max_depth=2, random_state=42)
+tree_reg1.fit(X, y)
+#+end_src
+
+#+RESULTS:
+: DecisionTreeRegressor(ccp_alpha=0.0, criterion='mse', max_depth=2,
+:                       max_features=None, max_leaf_nodes=None,
+:                       min_impurity_decrease=0.0, min_impurity_split=None,
+:                       min_samples_leaf=1, min_samples_split=2,
+:                       min_weight_fraction_leaf=0.0, random_state=42,
+:                       splitter='best')
+
+#+begin_src jupyter-python
+y2 = y - tree_reg1.predict(X)
+tree_reg2 = DecisionTreeRegressor(max_depth=2, random_state=42)
+tree_reg2.fit(X, y2)
+#+end_src
+
+#+RESULTS:
+: DecisionTreeRegressor(ccp_alpha=0.0, criterion='mse', max_depth=2,
+:                       max_features=None, max_leaf_nodes=None,
+:                       min_impurity_decrease=0.0, min_impurity_split=None,
+:                       min_samples_leaf=1, min_samples_split=2,
+:                       min_weight_fraction_leaf=0.0, random_state=42,
+:                       splitter='best')
+
+#+begin_src jupyter-python
+y3 = y2 - tree_reg2.predict(X)
+tree_reg3 = DecisionTreeRegressor(max_depth=2, random_state=42)
+tree_reg3.fit(X, y3)
+#+end_src
+
+#+RESULTS:
+: DecisionTreeRegressor(ccp_alpha=0.0, criterion='mse', max_depth=2,
+:                       max_features=None, max_leaf_nodes=None,
+:                       min_impurity_decrease=0.0, min_impurity_split=None,
+:                       min_samples_leaf=1, min_samples_split=2,
+:                       min_weight_fraction_leaf=0.0, random_state=42,
+:                       splitter='best')
+
+#+begin_src jupyter-python
+X_new = np.array([[0.8]])
+y_pred = sum(tree.predict(X_new) for tree in (tree_reg1, tree_reg2, tree_reg3))
+y_pred
+#+end_src
+
+#+RESULTS:
+: array([0.75026781])
+
+#+begin_src jupyter-python
+def plot_predictions(regressors, X, y, axes, label=None, style="r-", data_style="b.", data_label=None):
+    x1 = np.linspace(axes[0], axes[1], 500)
+    y_pred = sum(regressor.predict(x1.reshape(-1, 1)) for regressor in regressors)
+    plt.plot(X[:, 0], y, data_style, label=data_label)
+    plt.plot(x1, y_pred, style, linewidth=2, label=label)
+    if label or data_label:
+        plt.legend(loc="upper center", fontsize=16)
+    plt.axis(axes)
+
+plt.figure(figsize=(11,11))
+
+plt.subplot(321)
+plot_predictions([tree_reg1], X, y, axes=[-0.5, 0.5, -0.1, 0.8], label="$h_1(x_1)$", style="g-", data_label="Training set")
+plt.ylabel("$y$", fontsize=16, rotation=0)
+plt.title("Residuals and tree predictions", fontsize=16)
+
+plt.subplot(322)
+plot_predictions([tree_reg1], X, y, axes=[-0.5, 0.5, -0.1, 0.8], label="$h(x_1) = h_1(x_1)$", data_label="Training set")
+plt.ylabel("$y$", fontsize=16, rotation=0)
+plt.title("Ensemble predictions", fontsize=16)
+
+plt.subplot(323)
+plot_predictions([tree_reg2], X, y2, axes=[-0.5, 0.5, -0.5, 0.5], label="$h_2(x_1)$", style="g-", data_style="k+", data_label="Residuals")
+plt.ylabel("$y - h_1(x_1)$", fontsize=16)
+
+plt.subplot(324)
+plot_predictions([tree_reg1, tree_reg2], X, y, axes=[-0.5, 0.5, -0.1, 0.8], label="$h(x_1) = h_1(x_1) + h_2(x_1)$")
+plt.ylabel("$y$", fontsize=16, rotation=0)
+
+plt.subplot(325)
+plot_predictions([tree_reg3], X, y3, axes=[-0.5, 0.5, -0.5, 0.5], label="$h_3(x_1)$", style="g-", data_style="k+")
+plt.ylabel("$y - h_1(x_1) - h_2(x_1)$", fontsize=16)
+plt.xlabel("$x_1$", fontsize=16)
+
+plt.subplot(326)
+plot_predictions([tree_reg1, tree_reg2, tree_reg3], X, y, axes=[-0.5, 0.5, -0.1, 0.8], label="$h(x_1) = h_1(x_1) + h_2(x_1) + h_3(x_1)$")
+plt.xlabel("$x_1$", fontsize=16)
+plt.ylabel("$y$", fontsize=16, rotation=0);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/086c62a223f6602924b22fa78b32576f69515686.png]]
+
+
+*** Too few and too many estimators - Underfitting vs. Overfitting
+
+#+begin_src jupyter-python
+gbrt = GradientBoostingRegressor(max_depth=2, n_estimators=3, learning_rate=1.0, random_state=42)
+gbrt.fit(X, y)
+
+gbrt_slow = GradientBoostingRegressor(max_depth=2, n_estimators=200, learning_rate=0.1, random_state=42)
+gbrt_slow.fit(X, y);
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+fix, axes = plt.subplots(ncols=2, figsize=(10,4), sharey=True)
+
+plt.sca(axes[0])
+plot_predictions([gbrt], X, y, axes=[-0.5, 0.5, -0.1, 0.8], label="Ensemble predictions")
+plt.title("learning_rate={}, n_estimators={}".format(gbrt.learning_rate, gbrt.n_estimators), fontsize=14)
+plt.xlabel("$x_1$", fontsize=16)
+plt.ylabel("$y$", fontsize=16, rotation=0)
+
+plt.sca(axes[1])
+plot_predictions([gbrt_slow], X, y, axes=[-0.5, 0.5, -0.1, 0.8])
+plt.title("learning_rate={}, n_estimators={}".format(gbrt_slow.learning_rate, gbrt_slow.n_estimators), fontsize=14)
+plt.xlabel("$x_1$", fontsize=16);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/ab1a315b8d179d51900c2d007f237968f881cb14.png]]
+
+
+** Gradient Boosting with Early Stopping
+
+#+begin_src jupyter-python
+X_train, X_val, y_train, y_val = train_test_split(X, y, random_state=49)
+
+gbrt = GradientBoostingRegressor(max_depth=2, n_estimators=120, random_state=42)
+gbrt.fit(X_train, y_train)
+
+errors = [mean_squared_error(y_val, y_pred)
+          for y_pred in gbrt.staged_predict(X_val)]
+bst_n_estimators = np.argmin(errors) + 1
+
+gbrt_best = GradientBoostingRegressor(max_depth=2, n_estimators=bst_n_estimators, random_state=42)
+gbrt_best.fit(X_train, y_train)
+#+end_src
+
+#+RESULTS:
+: GradientBoostingRegressor(alpha=0.9, ccp_alpha=0.0, criterion='friedman_mse',
+:                           init=None, learning_rate=0.1, loss='ls', max_depth=2,
+:                           max_features=None, max_leaf_nodes=None,
+:                           min_impurity_decrease=0.0, min_impurity_split=None,
+:                           min_samples_leaf=1, min_samples_split=2,
+:                           min_weight_fraction_leaf=0.0, n_estimators=56,
+:                           n_iter_no_change=None, random_state=42, subsample=1.0,
+:                           tol=0.0001, validation_fraction=0.1, verbose=0,
+:                           warm_start=False)
+
+#+begin_src jupyter-python
+min_error = np.min(errors)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+plt.figure(figsize=(10, 4))
+
+plt.subplot(121)
+plt.plot(errors, "b.-")
+plt.plot([bst_n_estimators, bst_n_estimators], [0, min_error], "k--")
+plt.plot([0, 120], [min_error, min_error], "k--")
+plt.plot(bst_n_estimators, min_error, "ko")
+plt.text(bst_n_estimators, min_error*1.2, "Minimum", ha="center", fontsize=14)
+plt.axis([0, 120, 0, 0.01])
+plt.xlabel("Number of trees")
+plt.ylabel("Error", fontsize=16)
+plt.title("Validation error", fontsize=14)
+
+plt.subplot(122)
+plot_predictions([gbrt_best], X, y, axes=[-0.5, 0.5, -0.1, 0.8])
+plt.title("Best model (%d trees)" % bst_n_estimators, fontsize=14)
+plt.ylabel("$y$", fontsize=16, rotation=0)
+plt.xlabel("$x_1$", fontsize=16);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/658bb04bece94bb0af92d34c530286da58d44cbf.png]]
+
+- Early stopping with warm start
+
+#+begin_src jupyter-python
+gbrt = GradientBoostingRegressor(max_depth=2, warm_start=True, random_state=42)
+
+min_val_error = float("inf")
+error_going_up = 0
+for n_estimators in range(1, 120):
+    gbrt.n_estimators = n_estimators
+    gbrt.fit(X_train, y_train)
+    y_pred = gbrt.predict(X_val)
+    val_error = mean_squared_error(y_val, y_pred)
+    if val_error < min_val_error:
+        min_val_error = val_error
+        error_going_up = 0
+    else:
+        error_going_up += 1
+        if error_going_up == 5:
+            break  # early stopping
+
+print(gbrt.n_estimators)
+print("Minimum validation MSE: ", min_val_error)
+#+end_src
+
+#+RESULTS:
+: 61
+: Minimum validation MSE:  0.002712853325235463
+
+** Using XGBoost
+
+#+begin_src jupyter-python
+xgb_reg = xgboost.XGBRegressor(random_state=42)
+xgb_reg.fit(X_train, y_train)
+y_pred = xgb_reg.predict(X_val)
+val_error = mean_squared_error(y_val, y_pred)
+print("Validation MSE:", val_error)
+#+end_src
+
+#+RESULTS:
+: Validation MSE: 0.004000408205406276
+
+#+begin_src jupyter-python
+xgb_reg.fit(X_train, y_train, eval_set=[(X_val, y_val)], early_stopping_rounds=2)
+y_pred = xgb_reg.predict(X_val)
+val_error = mean_squared_error(y_val, y_pred)  # Not shown
+print("Validation MSE:", val_error)            # Not shown
+#+end_src
+
+#+RESULTS:
+#+begin_example
+[0]	validation_0-rmse:0.22834
+[1]	validation_0-rmse:0.16224
+[2]	validation_0-rmse:0.11843
+[3]	validation_0-rmse:0.08760
+[4]	validation_0-rmse:0.06848
+[5]	validation_0-rmse:0.05709
+[6]	validation_0-rmse:0.05297
+[7]	validation_0-rmse:0.05129
+[8]	validation_0-rmse:0.05155
+Validation MSE: 0.002630868681577655
+#+end_example
+
+#+begin_src jupyter-python
+%timeit xgboost.XGBRegressor().fit(X_train, y_train)
+#+end_src
+
+#+RESULTS:
+: 22.4 ms ± 2.55 ms per loop (mean ± std. dev. of 7 runs, 10 loops each)
+
+#+begin_src jupyter-python
+%timeit GradientBoostingRegressor().fit(X_train, y_train)
+#+end_src
+
+#+RESULTS:
+: 11.9 ms ± 51.9 µs per loop (mean ± std. dev. of 7 runs, 100 loops each)
+
+
+* Exercises
+
+** 8. Voting Classifier
+
+*** Load the MNIST data and split it into a training set, a validation set, and a test set (e.g., use 50,000 instances for training, 10,000 for validation, and 10,000 for testing).
+
+#+begin_src jupyter-python
+X_train, X_test, y_train, y_test = train_test_split(mnist.data, mnist.target, test_size=10000, random_state=42)
+X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=10000, random_state=42)
+#+end_src
+
+#+RESULTS:
+
+*** Then train various classifiers, such as a Random Forest classifier, an Extra-Trees classifier, and an SVM.
+
+#+begin_src jupyter-python
+random_forest_clf = RandomForestClassifier(n_estimators=100, random_state=42)
+extra_tree_clf = ExtraTreesClassifier(n_estimators=100, random_state=42)
+svm_clf = LinearSVC(random_state=42)
+mlp_clf = MLPClassifier(random_state=42)
+
+estimators = [random_forest_clf, extra_tree_clf, svm_clf, mlp_clf]
+for est in estimators:
+    print("Training the", est)
+    est.fit(X_train, y_train)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Training the RandomForestClassifier(bootstrap=True, ccp_alpha=0.0, class_weight=None,
+                       criterion='gini', max_depth=None, max_features='auto',
+                       max_leaf_nodes=None, max_samples=None,
+                       min_impurity_decrease=0.0, min_impurity_split=None,
+                       min_samples_leaf=1, min_samples_split=2,
+                       min_weight_fraction_leaf=0.0, n_estimators=100,
+                       n_jobs=None, oob_score=False, random_state=42, verbose=0,
+                       warm_start=False)
+Training the ExtraTreesClassifier(bootstrap=False, ccp_alpha=0.0, class_weight=None,
+                     criterion='gini', max_depth=None, max_features='auto',
+                     max_leaf_nodes=None, max_samples=None,
+                     min_impurity_decrease=0.0, min_impurity_split=None,
+                     min_samples_leaf=1, min_samples_split=2,
+                     min_weight_fraction_leaf=0.0, n_estimators=100,
+                     n_jobs=None, oob_score=False, random_state=42, verbose=0,
+                     warm_start=False)
+Training the LinearSVC(C=1.0, class_weight=None, dual=True, fit_intercept=True,
+          intercept_scaling=1, loss='squared_hinge', max_iter=1000,
+          multi_class='ovr', penalty='l2', random_state=42, tol=0.0001,
+          verbose=0)
+/home/ning/apps/conda/envs/ds/lib/python3.8/site-packages/sklearn/svm/_base.py:985: ConvergenceWarning: Liblinear failed to converge, increase the number of iterations.
+  warnings.warn("Liblinear failed to converge, increase "
+Training the MLPClassifier(activation='relu', alpha=0.0001, batch_size='auto', beta_1=0.9,
+              beta_2=0.999, early_stopping=False, epsilon=1e-08,
+              hidden_layer_sizes=(100,), learning_rate='constant',
+              learning_rate_init=0.001, max_fun=15000, max_iter=200,
+              momentum=0.9, n_iter_no_change=10, nesterovs_momentum=True,
+              power_t=0.5, random_state=42, shuffle=True, solver='adam',
+              tol=0.0001, validation_fraction=0.1, verbose=False,
+              warm_start=False)
+#+end_example
+
+#+begin_src jupyter-python
+for est in estimators:
+    print(est.__class__.__name__, est.score(X_val, y_val))
+#+end_src
+
+#+RESULTS:
+: RandomForestClassifier 0.9692
+: ExtraTreesClassifier 0.9715
+: LinearSVC 0.8695
+: MLPClassifier 0.9623
+
+*** Next, try to combine them into an ensemble that outperforms them all on the validation set, using a soft or hard voting classifier.
+
+#+begin_src jupyter-python
+named_estimators = [
+    ("random_forest_clf", random_forest_clf),
+    ("extra_trees_clf", extra_tree_clf),
+    ("svm_clf", svm_clf),
+    ("mlp_clf", mlp_clf),
+]
+voting_clf = VotingClassifier(named_estimators)
+voting_clf.fit(X_train, y_train)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+: /home/ning/apps/conda/envs/ds/lib/python3.8/site-packages/sklearn/svm/_base.py:985: ConvergenceWarning: Liblinear failed to converge, increase the number of iterations.
+:   warnings.warn("Liblinear failed to converge, increase "
+#+begin_example
+VotingClassifier(estimators=[('random_forest_clf',
+                              RandomForestClassifier(bootstrap=True,
+                                                     ccp_alpha=0.0,
+                                                     class_weight=None,
+                                                     criterion='gini',
+                                                     max_depth=None,
+                                                     max_features='auto',
+                                                     max_leaf_nodes=None,
+                                                     max_samples=None,
+                                                     min_impurity_decrease=0.0,
+                                                     min_impurity_split=None,
+                                                     min_samples_leaf=1,
+                                                     min_samples_split=2,
+                                                     min_weight_fraction_leaf=0.0,
+                                                     n_estimators=100,
+                                                     n_jobs...
+                                            hidden_layer_sizes=(100,),
+                                            learning_rate='constant',
+                                            learning_rate_init=0.001,
+                                            max_fun=15000, max_iter=200,
+                                            momentum=0.9, n_iter_no_change=10,
+                                            nesterovs_momentum=True,
+                                            power_t=0.5, random_state=42,
+                                            shuffle=True, solver='adam',
+                                            tol=0.0001, validation_fraction=0.1,
+                                            verbose=False, warm_start=False))],
+                 flatten_transform=True, n_jobs=None, verbose=False,
+                 voting='hard', weights=None)
+#+end_example
+:END:
+
+#+begin_src jupyter-python
+print("Voting classifier score: ", voting_clf.score(X_val, y_val))
+for est in voting_clf.estimators_:
+    print(est.__class__.__name__, est.score(X_val, y_val))
+#+end_src
+
+#+RESULTS:
+: Voting classifier score:  0.9718
+: RandomForestClassifier 0.9692
+: ExtraTreesClassifier 0.9715
+: LinearSVC 0.8695
+: MLPClassifier 0.9623
+
+*** Remove the lowest scored SVM
+
+Need to remove SVM from both untrained estimator dictionary and trained estimator list:
+#+begin_src jupyter-python
+print(voting_clf.estimators_)
+print(voting_clf.estimators)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+[RandomForestClassifier(bootstrap=True, ccp_alpha=0.0, class_weight=None,
+                       criterion='gini', max_depth=None, max_features='auto',
+                       max_leaf_nodes=None, max_samples=None,
+                       min_impurity_decrease=0.0, min_impurity_split=None,
+                       min_samples_leaf=1, min_samples_split=2,
+                       min_weight_fraction_leaf=0.0, n_estimators=100,
+                       n_jobs=None, oob_score=False, random_state=42, verbose=0,
+                       warm_start=False), ExtraTreesClassifier(bootstrap=False, ccp_alpha=0.0, class_weight=None,
+                     criterion='gini', max_depth=None, max_features='auto',
+                     max_leaf_nodes=None, max_samples=None,
+                     min_impurity_decrease=0.0, min_impurity_split=None,
+                     min_samples_leaf=1, min_samples_split=2,
+                     min_weight_fraction_leaf=0.0, n_estimators=100,
+                     n_jobs=None, oob_score=False, random_state=42, verbose=0,
+                     warm_start=False), LinearSVC(C=1.0, class_weight=None, dual=True, fit_intercept=True,
+          intercept_scaling=1, loss='squared_hinge', max_iter=1000,
+          multi_class='ovr', penalty='l2', random_state=42, tol=0.0001,
+          verbose=0), MLPClassifier(activation='relu', alpha=0.0001, batch_size='auto', beta_1=0.9,
+              beta_2=0.999, early_stopping=False, epsilon=1e-08,
+              hidden_layer_sizes=(100,), learning_rate='constant',
+              learning_rate_init=0.001, max_fun=15000, max_iter=200,
+              momentum=0.9, n_iter_no_change=10, nesterovs_momentum=True,
+              power_t=0.5, random_state=42, shuffle=True, solver='adam',
+              tol=0.0001, validation_fraction=0.1, verbose=False,
+              warm_start=False)]
+[('random_forest_clf', RandomForestClassifier(bootstrap=True, ccp_alpha=0.0, class_weight=None,
+                       criterion='gini', max_depth=None, max_features='auto',
+                       max_leaf_nodes=None, max_samples=None,
+                       min_impurity_decrease=0.0, min_impurity_split=None,
+                       min_samples_leaf=1, min_samples_split=2,
+                       min_weight_fraction_leaf=0.0, n_estimators=100,
+                       n_jobs=None, oob_score=False, random_state=42, verbose=0,
+                       warm_start=False)), ('extra_trees_clf', ExtraTreesClassifier(bootstrap=False, ccp_alpha=0.0, class_weight=None,
+                     criterion='gini', max_depth=None, max_features='auto',
+                     max_leaf_nodes=None, max_samples=None,
+                     min_impurity_decrease=0.0, min_impurity_split=None,
+                     min_samples_leaf=1, min_samples_split=2,
+                     min_weight_fraction_leaf=0.0, n_estimators=100,
+                     n_jobs=None, oob_score=False, random_state=42, verbose=0,
+                     warm_start=False)), ('svm_clf', LinearSVC(C=1.0, class_weight=None, dual=True, fit_intercept=True,
+          intercept_scaling=1, loss='squared_hinge', max_iter=1000,
+          multi_class='ovr', penalty='l2', random_state=42, tol=0.0001,
+          verbose=0)), ('mlp_clf', MLPClassifier(activation='relu', alpha=0.0001, batch_size='auto', beta_1=0.9,
+              beta_2=0.999, early_stopping=False, epsilon=1e-08,
+              hidden_layer_sizes=(100,), learning_rate='constant',
+              learning_rate_init=0.001, max_fun=15000, max_iter=200,
+              momentum=0.9, n_iter_no_change=10, nesterovs_momentum=True,
+              power_t=0.5, random_state=42, shuffle=True, solver='adam',
+              tol=0.0001, validation_fraction=0.1, verbose=False,
+              warm_start=False))]
+#+end_example
+
+#+begin_src jupyter-python
+voting_clf.set_params(svm_clf=None)
+del voting_clf.estimators_[2]
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+voting_clf.score(X_val, y_val)
+#+end_src
+
+#+RESULTS:
+: 0.9737
+
+*** Try soft voting
+
+#+begin_src jupyter-python
+voting_clf.voting = "soft"
+voting_clf.score(X_val, y_val)
+#+end_src
+
+#+RESULTS:
+: 0.9691
+
+*** Final Test
+
+#+begin_src jupyter-python
+voting_clf.voting = "hard"
+print("Hard voting classifier score: ", voting_clf.score(X_test, y_test))
+for est in voting_clf.estimators_:
+    print(est.__class__.__name__, est.score(X_test, y_test))
+#+end_src
+
+#+RESULTS:
+: Hard voting classifier score:  0.9704
+: RandomForestClassifier 0.9645
+: ExtraTreesClassifier 0.9691
+: MLPClassifier 0.9612
+
+The voting classifier only very slightly reduced the error rate of the best model in this case.
+
+
+** 9. Stacking Ensemble
+
+*** Run the individual classifiers from the previous exercise to make predictions on the validation set, and create a new training set with the resulting predictions: each training instance is a vector containing the set of predictions from all your classifiers for an image, and the target is the image's class. Train a classifier on this new training set.
+
+#+begin_src jupyter-python
+X_val_predictions = np.empty((len(X_val), len(estimators)), dtype=np.float32)
+for index, est in enumerate(estimators):
+    X_val_predictions[:, index] = est.predict(X_val)
+X_val_predictions
+#+end_src
+
+#+RESULTS:
+: array([[5., 5., 5., 5.],
+:        [8., 8., 8., 8.],
+:        [2., 2., 2., 2.],
+:        ...,
+:        [7., 7., 7., 7.],
+:        [6., 6., 6., 6.],
+:        [7., 7., 7., 7.]], dtype=float32)
+
+#+begin_src jupyter-python
+rnd_forest_blender = RandomForestClassifier(n_estimators=200, oob_score=True, random_state=42)
+rnd_forest_blender.fit(X_val_predictions, y_val)
+#+end_src
+
+#+RESULTS:
+: RandomForestClassifier(bootstrap=True, ccp_alpha=0.0, class_weight=None,
+:                        criterion='gini', max_depth=None, max_features='auto',
+:                        max_leaf_nodes=None, max_samples=None,
+:                        min_impurity_decrease=0.0, min_impurity_split=None,
+:                        min_samples_leaf=1, min_samples_split=2,
+:                        min_weight_fraction_leaf=0.0, n_estimators=200,
+:                        n_jobs=None, oob_score=True, random_state=42, verbose=0,
+:                        warm_start=False)
+
+#+begin_src jupyter-python
+rnd_forest_blender.oob_score_
+#+end_src
+
+#+RESULTS:
+: 0.9703
+
+#+begin_src jupyter-python
+mlp_blender = MLPClassifier(max_iter=1000, random_state=42)
+mlp_blender.fit(X_val_predictions, y_val)
+y_pred_mlp = mlp_blender.predict(X_val_predictions)
+accuracy_score(y_val, y_pred_mlp)
+#+end_src
+
+#+RESULTS:
+: 0.9728
+
+*** Congratulations, you have just trained a blender, and together with the classifiers they form a stacking ensemble! Now let's evaluate the ensemble on the test set. For each image in the test set, make predictions with all your classifiers, then feed the predictions to the blender to get the ensemble's predictions. How does it compare to the voting classifier you trained earlier?
+
+#+begin_src jupyter-python
+X_test_predictions = np.empty((len(X_test), len(estimators)), dtype=np.float32)
+for index, estimator in enumerate(estimators):
+    X_test_predictions[:, index] = estimator.predict(X_test)
+y_pred_rf = rnd_forest_blender.predict(X_test_predictions)
+y_pred_mlp = mlp_blender.predict(X_test_predictions)
+print("Random Forest blender score:", accuracy_score(y_test, y_pred_rf))
+print("MLP blender score:", accuracy_score(y_test, y_pred_mlp))
+#+end_src
+
+#+RESULTS:
+: Random Forest blender score: 0.9684
+: MLP blender score: 0.9628
+
+This stacking ensemble does not perform as well as the voting classifier we trained earlier, it's not quite as good as the best individual classifier.
