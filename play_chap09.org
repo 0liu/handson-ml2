@@ -1,0 +1,2561 @@
+#+TITLE: Practice Hands-on ML Chap09 Unsupervised Learning
+
+#+begin_src jupyter-python
+import numpy as np
+import pandas as pd
+from scipy import stats
+from timeit import timeit
+import requests
+import pathlib
+
+# Visualization
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+from matplotlib.ticker import FixedLocator, FixedFormatter
+from matplotlib.image import imread
+from matplotlib.colors import LogNorm
+from matplotlib.patches import Polygon
+
+# Scikit-learn
+import sklearn
+from sklearn.datasets import (
+    load_iris,
+    load_digits,
+    make_blobs,
+    make_moons,
+    fetch_openml,
+    fetch_olivetti_faces,
+)
+
+# Data processing
+from sklearn.model_selection import train_test_split, StratifiedShuffleSplit
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+
+# Metrics and model selection
+from sklearn.metrics import mean_squared_error
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import silhouette_score, silhouette_samples
+from sklearn.model_selection import GridSearchCV
+
+# Models
+from sklearn.cluster import KMeans, MiniBatchKMeans
+from sklearn.cluster import DBSCAN
+from sklearn.cluster import SpectralClustering
+from sklearn.cluster import AgglomerativeClustering
+from sklearn.mixture import GaussianMixture, BayesianGaussianMixture
+from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.decomposition import PCA
+from sklearn.ensemble import RandomForestClassifier
+
+# matplotlib and sklearn config
+mpl.rc("axes", labelsize=10, linewidth=0.3)
+mpl.rc("xtick", labelsize=10)
+mpl.rc("ytick", labelsize=10)
+mpl.rc("legend", fontsize=8, fancybox=True)
+mpl.rc("figure", facecolor="white", dpi=120)
+
+sklearn.set_config(print_changed_only=False)
+#+end_src
+
+#+RESULTS:
+
+
+* Clustering
+
+#+begin_src jupyter-python
+data = load_iris()
+X = data.data
+y = data.target
+data.target_names
+#+end_src
+
+#+RESULTS:
+: array(['setosa', 'versicolor', 'virginica'], dtype='<U10')
+
+#+begin_src jupyter-python
+plt.figure(figsize=(9, 3.5))
+
+plt.subplot(121)
+plt.plot(X[y==0, 2], X[y==0, 3], "yo", label="Iris setosa")
+plt.plot(X[y==1, 2], X[y==1, 3], "bs", label="Iris versicolor")
+plt.plot(X[y==2, 2], X[y==2, 3], "g^", label="Iris virginica")
+plt.xlabel("Petal length", fontsize=14)
+plt.ylabel("Petal width", fontsize=14)
+plt.legend(fontsize=12)
+
+plt.subplot(122)
+plt.scatter(X[:, 2], X[:, 3], c="k", marker=".")
+plt.xlabel("Petal length", fontsize=14)
+plt.tick_params(labelleft=False);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/8d98a82d7896d07e85c3c9463c13c9225c48b8b5.png]]
+
+#+begin_src jupyter-python
+y_pred = GaussianMixture(n_components=3, random_state=42).fit(X).predict(X)
+mapping = np.array([2, 0, 1])
+y_pred = np.array([mapping[cluster_id] for cluster_id in y_pred])
+
+plt.plot(X[y_pred==0, 2], X[y_pred==0, 3], "yo", label="Cluster 1")
+plt.plot(X[y_pred==1, 2], X[y_pred==1, 3], "bs", label="Cluster 2")
+plt.plot(X[y_pred==2, 2], X[y_pred==2, 3], "g^", label="Cluster 3")
+plt.xlabel("Petal length", fontsize=14)
+plt.ylabel("Petal width", fontsize=14)
+plt.legend(loc="upper left", fontsize=12);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/023c88e71571ec96bf80a825de1ce889aacb97a7.png]]
+
+#+begin_src jupyter-python
+print(np.sum(y_pred==y))
+print(np.sum(y_pred==y) / len(y_pred))
+#+end_src
+
+#+RESULTS:
+: 145
+: 0.9666666666666667
+
+
+** K-Means
+
+#+begin_src jupyter-python
+blob_centers = np.array([[0.2, 2.3], [-1.5, 2.3], [-2.8, 1.8], [-2.8, 2.8], [-2.8, 1.3]])
+blob_std = np.array([0.4, 0.3, 0.1, 0.1, 0.1])
+X, y = make_blobs(n_samples=2000, centers=blob_centers, cluster_std=blob_std, random_state=7)
+
+def plot_clusters(X, y=None):
+    plt.scatter(X[:, 0], X[:, 1], c=y, s=1)
+    plt.xlabel("$x_1$", fontsize=14)
+    plt.ylabel("$x_2$", fontsize=14, rotation=0)
+
+plt.figure(figsize=(8,4))
+plot_clusters(X);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/d5aa92f263039e475f1807e07f7acf38cf5e8b26.png]]
+
+*** Fit and Predict
+
+#+begin_src jupyter-python
+k = 5
+kmeans = KMeans(n_clusters=k, random_state=42)
+y_pred = kmeans.fit_predict(X)
+y_pred
+#+end_src
+
+#+RESULTS:
+: array([4, 0, 1, ..., 2, 1, 0], dtype=int32)
+
+#+begin_src jupyter-python
+y_pred is kmeans.labels_
+#+end_src
+
+#+RESULTS:
+: True
+
+#+begin_src jupyter-python
+kmeans.cluster_centers_
+#+end_src
+
+#+RESULTS:
+: array([[-2.80389616,  1.80117999],
+:        [ 0.20876306,  2.25551336],
+:        [-2.79290307,  2.79641063],
+:        [-1.46679593,  2.28585348],
+:        [-2.80037642,  1.30082566]])
+
+#+begin_src jupyter-python
+X_new = np.array([[0, 2], [3, 2], [-3, 3], [-3, 2.5]])
+kmeans.predict(X_new)
+#+end_src
+
+#+RESULTS:
+: array([1, 1, 2, 2], dtype=int32)
+
+*** Decision Boundaries
+
+#+begin_src jupyter-python
+def plot_data(X):
+    plt.plot(X[:, 0], X[:, 1], 'k.', markersize=2)
+
+def plot_centroids(centroids, weights=None, circle_color='w', cross_color='k'):
+    if weights is not None:
+        centroids = centroids[weights > weights.max() / 10]
+    plt.scatter(centroids[:, 0], centroids[:, 1],
+                marker='o', s=3, linewidths=8,
+                color=circle_color, zorder=10, alpha=0.9)
+    plt.scatter(centroids[:, 0], centroids[:, 1],
+                marker='x', s=1, linewidths=8,
+                color=cross_color, zorder=11, alpha=1)
+
+def plot_decision_boundaries(clusterer, X, resolution=1000, show_centroids=True,
+                             show_xlabels=True, show_ylabels=True):
+    mins = X.min(axis=0) - 0.1
+    maxs = X.max(axis=0) + 0.1
+    xx, yy = np.meshgrid(np.linspace(mins[0], maxs[0], resolution),
+                         np.linspace(mins[1], maxs[1], resolution))
+    Z = clusterer.predict(np.c_[xx.ravel(), yy.ravel()])
+    Z = Z.reshape(xx.shape)
+
+    plt.contourf(Z, extent=(mins[0], maxs[0], mins[1], maxs[1]),
+                cmap="Pastel2")
+    plt.contour(Z, extent=(mins[0], maxs[0], mins[1], maxs[1]),
+                linewidths=1, colors='k')
+    plot_data(X)
+    if show_centroids:
+        plot_centroids(clusterer.cluster_centers_)
+
+    if show_xlabels:
+        plt.xlabel("$x_1$", fontsize=14)
+    else:
+        plt.tick_params(labelbottom=False)
+    if show_ylabels:
+        plt.ylabel("$x_2$", fontsize=14, rotation=0)
+    else:
+        plt.tick_params(labelleft=False)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+plt.figure(figsize=(8, 4))
+plot_decision_boundaries(kmeans, X);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/52e1f2122c39eb88f68cb8c9784ff0adb924ab41.png]]
+
+
+*** Hard Clustering vs. Soft Clustering
+
+Rather than arbitrarily choosing the closest cluster for each instance, which is called hard clustering, it might be better measure the *distance of each instance to all 5 centroids*. This is *what the ~transform()~ method does*:
+
+#+begin_src jupyter-python
+kmeans.transform(X_new)
+#+end_src
+
+#+RESULTS:
+: array([[2.81093633, 0.32995317, 2.9042344 , 1.49439034, 2.88633901],
+:        [5.80730058, 2.80290755, 5.84739223, 4.4759332 , 5.84236351],
+:        [1.21475352, 3.29399768, 0.29040966, 1.69136631, 1.71086031],
+:        [0.72581411, 3.21806371, 0.36159148, 1.54808703, 1.21567622]])
+
+This is actually the Euclidian distance between each instance and centroid:
+
+#+begin_src jupyter-python
+kmeans.cluster_centers_
+#+end_src
+
+#+RESULTS:
+: array([[-2.80389616,  1.80117999],
+:        [ 0.20876306,  2.25551336],
+:        [-2.79290307,  2.79641063],
+:        [-1.46679593,  2.28585348],
+:        [-2.80037642,  1.30082566]])
+
+#+begin_src jupyter-python
+np.linalg.norm(np.tile(X_new, (1, k)).reshape(-1, k, 2) - kmeans.cluster_centers_, axis=2)
+#+end_src
+
+#+RESULTS:
+: array([[2.81093633, 0.32995317, 2.9042344 , 1.49439034, 2.88633901],
+:        [5.80730058, 2.80290755, 5.84739223, 4.4759332 , 5.84236351],
+:        [1.21475352, 3.29399768, 0.29040966, 1.69136631, 1.71086031],
+:        [0.72581411, 3.21806371, 0.36159148, 1.54808703, 1.21567622]])
+
+*** K-Means Algorithm
+
+The KMeans class applies an optimized algorithm by default. To get the original K-Means algorithm (for educational purposes only), you must set ~init="random"~, ~n_init=1~ and ~algorithm="full"~. These hyperparameters will be explained below.
+
+Let's run the K-Means algorithm for 1, 2 and 3 iterations, to see how the centroids move around:
+
+#+begin_src jupyter-python
+kmeans_iter1 = KMeans(n_clusters=5, init="random", n_init=1,
+                     algorithm="full", max_iter=1, random_state=1)
+kmeans_iter2 = KMeans(n_clusters=5, init="random", n_init=1,
+                     algorithm="full", max_iter=2, random_state=1)
+kmeans_iter3 = KMeans(n_clusters=5, init="random", n_init=1,
+                     algorithm="full", max_iter=3, random_state=1)
+kmeans_iter1.fit(X)
+kmeans_iter2.fit(X)
+kmeans_iter3.fit(X)
+
+
+plt.figure(figsize=(10, 8))
+
+plt.subplot(321)
+plot_data(X)
+plot_centroids(kmeans_iter1.cluster_centers_, circle_color='r', cross_color='w')
+plt.ylabel("$x_2$", fontsize=14, rotation=0)
+plt.tick_params(labelbottom=False)
+plt.title("Update the centroids (initially randomly)", fontsize=14)
+
+plt.subplot(322)
+plot_decision_boundaries(kmeans_iter1, X, show_xlabels=False, show_ylabels=False)
+plt.title("Label the instances", fontsize=14)
+
+plt.subplot(323)
+plot_decision_boundaries(kmeans_iter1, X, show_centroids=False, show_xlabels=False)
+plot_centroids(kmeans_iter2.cluster_centers_)
+
+plt.subplot(324)
+plot_decision_boundaries(kmeans_iter2, X, show_xlabels=False, show_ylabels=False)
+
+plt.subplot(325)
+plot_decision_boundaries(kmeans_iter2, X, show_centroids=False)
+plot_centroids(kmeans_iter3.cluster_centers_)
+
+plt.subplot(326)
+plot_decision_boundaries(kmeans_iter3, X, show_ylabels=False)
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/1a024160e4adac34a9158bedc7db2d955cb4c8b2.png]]
+
+
+*** K-Means Variability
+
+In the original K-Means algorithm, the centroids are just initialized randomly, and the algorithm simply runs a single iteration to gradually improve the centroids, as we saw above.
+
+However, one major problem with this approach is that if you run K-Means multiple times (or with different random seeds), it can converge to very different solutions, as you can see below:
+
+#+begin_src jupyter-python
+def plot_clusterer_comparison(clusterer1, clusterer2, X, title1=None, title2=None):
+    clusterer1.fit(X)
+    clusterer2.fit(X)
+
+    plt.figure(figsize=(10, 3.2))
+
+    plt.subplot(121)
+    plot_decision_boundaries(clusterer1, X)
+    if title1:
+        plt.title(title1, fontsize=14)
+
+    plt.subplot(122)
+    plot_decision_boundaries(clusterer2, X, show_ylabels=False)
+    if title2:
+        plt.title(title2, fontsize=14)
+
+kmeans_rnd_init1 = KMeans(n_clusters=5, init="random", n_init=1,
+                         algorithm="full", random_state=11)
+kmeans_rnd_init2 = KMeans(n_clusters=5, init="random", n_init=1,
+                         algorithm="full", random_state=19)
+
+plot_clusterer_comparison(kmeans_rnd_init1, kmeans_rnd_init2, X,
+                          "Solution 1", "Solution 2 (with a different random init)");
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/c84af71ae81c8fdecdebcd04fa714b4e98091352.png]]
+
+*** Inertia
+
+To select the best model, we will need a way to evaluate a K-Mean model's performance. Unfortunately, clustering is an unsupervised task, so we do not have the targets. But at least we can measure the distance between each instance and its centroid. This is the idea behind the inertia metric:
+
+#+begin_src jupyter-python
+kmeans.inertia_
+#+end_src
+
+#+RESULTS:
+: 211.5985372581683
+
+As you can easily verify, inertia is the sum of the squared distances between each training instance and its closest centroid:
+
+#+begin_src jupyter-python
+X_dist = kmeans.transform(X)
+np.sum(X_dist[np.arange(len(X_dist)), kmeans.labels_]**2)
+#+end_src
+
+#+RESULTS:
+: 211.59853725816805
+
+The score() method returns the negative inertia.
+
+#+begin_src jupyter-python
+kmeans.score(X)
+#+end_src
+
+#+RESULTS:
+: -211.5985372581683
+
+*** Multiple Initializations
+
+So one approach to solve the variability issue is to simply run the K-Means algorithm multiple times with different random initializations, and select the solution that minimizes the inertia. For example, here are the inertias of the two "bad" models shown in the previous figure:
+
+#+begin_src jupyter-python
+print(kmeans_rnd_init1.inertia_)
+print(kmeans_rnd_init2.inertia_)
+#+end_src
+
+#+RESULTS:
+: 223.29108572819047
+: 237.46249169442856
+
+As you can see, they have a higher inertia than the first "good" model we trained, which means they are probably worse.
+
+When you set the n_init hyperparameter, Scikit-Learn runs the original algorithm n_init times, and selects the solution that minimizes the inertia. By default, Scikit-Learn sets n_init=10.
+
+#+begin_src jupyter-python
+kmeans_rnd_10_inits = KMeans(n_clusters=5, init="random", n_init=10,
+                              algorithm="full", random_state=11)
+kmeans_rnd_10_inits.fit(X)
+#+end_src
+
+#+RESULTS:
+: KMeans(algorithm='full', copy_x=True, init='random', max_iter=300, n_clusters=5,
+:        n_init=10, n_jobs='deprecated', precompute_distances='deprecated',
+:        random_state=11, tol=0.0001, verbose=0)
+
+As you can see, we end up with the initial model, which is certainly the optimal K-Means solution (at least in terms of inertia, and assuming ~k=5~.
+
+#+begin_src jupyter-python
+plt.figure(figsize=(8, 4))
+plot_decision_boundaries(kmeans_rnd_10_inits, X);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/ad2530beb08d2092f2d170b5b79e82464faa1977.png]]
+
+
+*** K-Means++
+
+Instead of initializing the centroids entirely randomly, it is preferable to initialize them using the following algorithm, proposed in a 2006 paper by David Arthur and Sergei Vassilvitskii:
+
+    Take one centroid $c_1$, chosen uniformly at random from the dataset.
+    Take a new center $c_i$, choosing an instance $\mathbf{x}_i$ with probability: $D(\mathbf{x}_i)^2$ / $\sum\limits_{j=1}^{m}{D(\mathbf{x}_j)}^2$ where $D(\mathbf{x}_i)$ is the distance between the instance $\mathbf{x}_i$ and the closest centroid that was already chosen. This probability distribution ensures that *instances that are further away from already chosen centroids are much more likely be selected as centroids*.
+    Repeat the previous step until all $k$ centroids have been chosen.
+
+The rest of the K-Means++ algorithm is just regular K-Means. With this initialization, the K-Means algorithm is much less likely to converge to a suboptimal solution, so it is possible to reduce n_init considerably. Most of the time, this largely compensates for the additional complexity of the initialization process.
+
+To set the initialization to K-Means++, simply set init="k-means++" (this is actually the default):
+
+#+begin_src jupyter-python
+KMeans()
+#+end_src
+
+#+RESULTS:
+: KMeans(algorithm='auto', copy_x=True, init='k-means++', max_iter=300,
+:        n_clusters=8, n_init=10, n_jobs='deprecated',
+:        precompute_distances='deprecated', random_state=None, tol=0.0001,
+:        verbose=0)
+
+#+begin_src jupyter-python
+good_init = np.array([[-3, 3], [-3, 2], [-3, 1], [-1, 2], [0, 2]])
+kmeans = KMeans(n_clusters=5, init=good_init, n_init=1, random_state=42)
+kmeans.fit(X)
+kmeans.inertia_
+#+end_src
+
+#+RESULTS:
+: 211.5985372581683
+
+*** Accelerated K-Means
+
+The K-Means algorithm can be significantly accelerated by avoiding many unnecessary distance calculations: this is achieved by exploiting the triangle inequality (given three points A, B and C, the distance AC is always such that AC ≤ AB + BC) and by keeping track of lower and upper bounds for distances between instances and centroids (see this 2003 paper by Charles Elkan for more details).
+
+To use Elkan's variant of K-Means, just set algorithm="elkan". Note that it does not support sparse data, so by default, Scikit-Learn uses "elkan" for dense data, and "full" (the regular K-Means algorithm) for sparse data.
+
+#+begin_src jupyter-python
+%timeit -n50 KMeans(algorithm="elkan").fit(X)
+#+end_src
+
+#+RESULTS:
+: 52.5 ms ± 2.88 ms per loop (mean ± std. dev. of 7 runs, 50 loops each)
+
+#+begin_src jupyter-python
+%timeit -n 50 KMeans(algorithm="full").fit(X)
+#+end_src
+
+#+RESULTS:
+: 43.9 ms ± 2.57 ms per loop (mean ± std. dev. of 7 runs, 50 loops each)
+
+*** Mini-Batch K-Means
+
+#+begin_src jupyter-python
+minibatch_kmeans = MiniBatchKMeans(n_clusters=5, random_state=42)
+minibatch_kmeans.fit(X)
+#+end_src
+
+#+RESULTS:
+: MiniBatchKMeans(batch_size=100, compute_labels=True, init='k-means++',
+:                 init_size=None, max_iter=100, max_no_improvement=10,
+:                 n_clusters=5, n_init=3, random_state=42,
+:                 reassignment_ratio=0.01, tol=0.0, verbose=0)
+
+#+begin_src jupyter-python
+minibatch_kmeans.inertia_
+#+end_src
+
+#+RESULTS:
+: 211.93186531476786
+
+If the dataset does not fit in memory, the simplest option is to use the memmap class, just like we did for incremental PCA in the previous chapter. First let's load MNIST:
+
+#+begin_src jupyter-python
+mnist = fetch_openml('mnist_784', version=1)
+mnist.target = mnist.target.astype(np.int64)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+X_train, X_test, y_train, y_test = train_test_split(mnist['data'], mnist['target'], random_state=42)
+#+end_src
+
+#+RESULTS:
+
+Write data to a memmap:
+
+#+begin_src jupyter-python
+filename = 'my_mnist.data'
+X_mm = np.memmap(filename, dtype='float32', mode='write', shape=X_train.shape)
+X_mm[:] = X_train
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+minibatch_kmeans = MiniBatchKMeans(n_clusters=10, batch_size=10, random_state=42)
+minibatch_kmeans.fit(X_mm)
+#+end_src
+
+#+RESULTS:
+: MiniBatchKMeans(batch_size=10, compute_labels=True, init='k-means++',
+:                 init_size=None, max_iter=100, max_no_improvement=10,
+:                 n_clusters=10, n_init=3, random_state=42,
+:                 reassignment_ratio=0.01, tol=0.0, verbose=0)
+
+If your data is so large that you cannot use memmap, things get more complicated. Let's start by writing a function to load the next batch (in real life, you would load the data from disk):
+
+#+begin_src jupyter-python
+def load_next_batch(batch_size):
+    return X[np.random.choice(len(X), batch_size, replace=False)]
+#+end_src
+
+#+RESULTS:
+
+Now we can train the model by feeding it one batch at a time. We also need to implement multiple initializations and keep the model with the lowest inertia:
+
+#+begin_src jupyter-python
+np.random.seed(42)
+
+k = 5
+n_init = 10
+n_iterations = 100
+batch_size = 100
+init_size = 500  # more data for K-Means++ initialization
+evaluate_on_last_n_iters = 10
+
+best_kmeans = None
+for init in range(n_init):
+    minibatch_kmeans = MiniBatchKMeans(n_clusters=k, init_size=init_size)
+    X_init = load_next_batch(init_size)
+    minibatch_kmeans.partial_fit(X_init)
+
+    minibatch_kmeans.sum_inertia_ = 0  # custom defined attribute
+    for iteration in range(n_iterations):
+        X_batch = load_next_batch(batch_size)
+        minibatch_kmeans.partial_fit(X_batch)
+        if iteration >= n_iterations - evaluate_on_last_n_iters:
+            minibatch_kmeans.sum_inertia_ += minibatch_kmeans.inertia_
+
+    if (best_kmeans is None or minibatch_kmeans.sum_inertia_ < best_kmeans.sum_inertia_):
+        best_kmeans = minibatch_kmeans
+
+best_kmeans.score(X)
+#+end_src
+
+#+RESULTS:
+: -211.70999744411446
+
+Mini-batch K-Means is much faster than regular K-Means:
+
+#+begin_src jupyter-python
+%timeit KMeans(n_clusters=5).fit(X)
+#+end_src
+
+#+RESULTS:
+: 30 ms ± 2.94 ms per loop (mean ± std. dev. of 7 runs, 10 loops each)
+
+#+begin_src jupyter-python
+%timeit MiniBatchKMeans(n_clusters=5).fit(X)
+#+end_src
+
+#+RESULTS:
+: 11 ms ± 321 µs per loop (mean ± std. dev. of 7 runs, 100 loops each)
+
+#+begin_src jupyter-python
+times = np.empty((100, 2))
+inertias = np.empty((100, 2))
+for k in range(1, 101):
+    kmeans_ = KMeans(n_clusters=k, random_state=42)
+    minibatch_kmeans = MiniBatchKMeans(n_clusters=k, random_state=42)
+    print("\r{}/{}".format(k, 100), end="")
+    times[k-1, 0] = timeit("kmeans_.fit(X)", number=10, globals=globals())
+    times[k-1, 1] = timeit("minibatch_kmeans.fit(X)", number=10, globals=globals())
+    inertias[k-1, 0] = kmeans_.inertia_
+    inertias[k-1, 1] = minibatch_kmeans.inertia_
+#+end_src
+
+#+RESULTS:
+: 100/100
+
+#+begin_src jupyter-python
+plt.figure(figsize=(10,4))
+
+plt.subplot(121)
+plt.plot(range(1, 101), inertias[:, 0], "r--", label="K-Means")
+plt.plot(range(1, 101), inertias[:, 1], "b.-", label="Mini-batch K-Means")
+plt.xlabel("$k$", fontsize=16)
+plt.title("Inertia", fontsize=14)
+plt.legend(fontsize=14)
+plt.axis([1, 100, 0, 100])
+
+plt.subplot(122)
+plt.plot(range(1, 101), times[:, 0], "r--", label="K-Means")
+plt.plot(range(1, 101), times[:, 1], "b.-", label="Mini-batch K-Means")
+plt.xlabel("$k$", fontsize=16)
+plt.title("Training time (seconds)", fontsize=14)
+plt.axis([1, 100, 0, 6]);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/f9db467c36f68571cd0533f474a7bfe28de6beda.png]]
+
+
+*** Fitting the optimal number of clusters
+
+#+begin_src jupyter-python
+kmeans_k3 = KMeans(n_clusters=3, random_state=42)
+kmeans_k8 = KMeans(n_clusters=8, random_state=42)
+
+plot_clusterer_comparison(kmeans_k3, kmeans_k8, X, "$k=3$", "$k=8$");
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/ce169b12457dd032fc8bfcdcc09c70f65ea2b044.png]]
+
+#+begin_src jupyter-python
+print(kmeans_k3.inertia_)
+print(kmeans_k8.inertia_)
+#+end_src
+
+#+RESULTS:
+: 653.2167190021556
+: 119.11983416102889
+
+No, we cannot simply take the value of $k$ that minimizes the inertia, since it keeps getting lower as we increase $k$. Indeed, the more clusters there are, the closer each instance will be to its closest centroid, and therefore the lower the inertia will be. However, we can plot the inertia as a function of $k$ and analyze the resulting curve:
+#+begin_src jupyter-python
+kmeans_per_k = [KMeans(n_clusters=k, random_state=42).fit(X)
+                for k in range(1, 10)]
+inertias = [model.inertia_ for model in kmeans_per_k]
+
+plt.figure(figsize=(8, 3.5))
+plt.plot(range(1, 10), inertias, "bo-")
+plt.xlabel("$k$", fontsize=14)
+plt.ylabel("Inertia", fontsize=14)
+plt.annotate('Elbow',
+             xy=(4, inertias[3]),
+             xytext=(0.55, 0.55),
+             textcoords='figure fraction',
+             fontsize=16,
+             arrowprops=dict(facecolor='black', shrink=0.1)
+            )
+plt.axis([1, 8.5, 0, 1300]);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/b4679205b40d60d3394a91642505145141852a8a.png]]
+
+As you can see, there is an elbow at $k=4$, which means that less clusters than that would be bad, and more clusters would not help much and might cut clusters in half. So $k=4$ is a pretty good choice. Of course in this example it is not perfect since it means that the two blobs in the lower left will be considered as just a single cluster, but it's a pretty good clustering nonetheless.
+
+#+begin_src jupyter-python
+plot_decision_boundaries(kmeans_per_k[4-1], X)
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/855997d2695e1a7dd00a4624c026c12b920ee580.png]]
+
+
+Another approach is to look at the silhouette score, which is the mean silhouette coefficient over all the instances. An instance's silhouette coefficient is equal to $(b - a)/\max(a, b)$ where $a$ is the mean distance to the other instances in the same cluster (it is the mean intra-cluster distance), and $b$ is the mean nearest-cluster distance, that is the mean distance to the instances of the next closest cluster (defined as the one that minimizes $b$, excluding the instance's own cluster). The silhouette coefficient can vary between -1 and +1: a coefficient close to +1 means that the instance is well inside its own cluster and far from other clusters, while a coefficient close to 0 means that it is close to a cluster boundary, and finally a coefficient close to -1 means that the instance may have been assigned to the wrong cluster.
+
+Let's plot the silhouette score as a function of $k$:
+
+#+begin_src jupyter-python
+silhouette_scores = [silhouette_score(X, model.labels_)
+                     for model in kmeans_per_k[1:]]
+
+plt.figure(figsize=(8, 3))
+plt.plot(range(2, 10), silhouette_scores, "bo-")
+plt.xlabel("$k$", fontsize=14)
+plt.ylabel("Silhouette score", fontsize=14)
+plt.axis([1.8, 8.5, 0.55, 0.7]);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/62aaf56c0eb3ac3fa4742cf3734277a9fec374d8.png]]
+
+
+As you can see, this visualization is much richer than the previous one: in particular, although it confirms that $k=4$ is a very good choice, but it also underlines the fact that $k=5$ is quite good as well.
+
+An even more informative visualization is given when you plot every instance's silhouette coefficient, sorted by the cluster they are assigned to and by the value of the coefficient. This is called a silhouette diagram:
+
+#+begin_src jupyter-python
+plt.figure(figsize=(11, 9))
+
+for k in (3, 4, 5, 6):
+    plt.subplot(2, 2, k - 2)
+
+    y_pred = kmeans_per_k[k - 1].labels_
+    silhouette_coefficients = silhouette_samples(X, y_pred)
+
+    padding = len(X) // 30
+    pos = padding
+    ticks = []
+    for i in range(k):
+        coeffs = silhouette_coefficients[y_pred == i]
+        coeffs.sort()
+
+        color = mpl.cm.Spectral(i / k)
+        plt.fill_betweenx(np.arange(pos, pos + len(coeffs)), 0, coeffs,
+                          facecolor=color, edgecolor=color, alpha=0.7)
+        ticks.append(pos + len(coeffs) // 2)
+        pos += len(coeffs) + padding
+
+    plt.gca().yaxis.set_major_locator(FixedLocator(ticks))
+    plt.gca().yaxis.set_major_formatter(FixedFormatter(range(k)))
+    if k in (3, 5):
+        plt.ylabel("Cluster")
+
+    if k in (5, 6):
+        plt.gca().set_xticks([-0.1, 0, 0.2, 0.4, 0.6, 0.8, 1])
+        plt.xlabel("Silhouette Coefficient")
+    else:
+        plt.tick_params(labelbottom=False)
+
+    plt.axvline(x=silhouette_scores[k - 2], color="red", linestyle="--")
+    plt.title("$k={}$".format(k), fontsize=16)
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/c38e2f3fdf5d9f0c0c81c6d4f50b9f3289fa0cbd.png]]
+
+
+** Limits of K-Means
+
+#+begin_src jupyter-python
+X1, y1 = make_blobs(n_samples=1000, centers=((4, -4), (0, 0)), random_state=42)
+X1 = X1.dot(np.array([[0.374, 0.95], [0.732, 0.598]]))
+X2, y2 = make_blobs(n_samples=250, centers=1, random_state=42)
+X2 = X2 + [6, -8]
+X = np.r_[X1, X2]
+y = np.r_[y1, y2]
+
+plot_clusters(X)
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/b002a0e5e91382780f38818be750760280273cd9.png]]
+
+#+begin_src jupyter-python
+kmeans_good = KMeans(n_clusters=3, init=np.array([[-1.5, 2.5], [0.5, 0], [4, 0]]), n_init=1, random_state=42)
+kmeans_bad = KMeans(n_clusters=3, random_state=42)
+kmeans_good.fit(X)
+kmeans_bad.fit(X)
+
+plt.figure(figsize=(10, 3.2))
+
+plt.subplot(121)
+plot_decision_boundaries(kmeans_good, X)
+plt.title("Inertia = {:.1f}".format(kmeans_good.inertia_), fontsize=14)
+
+plt.subplot(122)
+plot_decision_boundaries(kmeans_bad, X, show_ylabels=False)
+plt.title("Inertia = {:.1f}".format(kmeans_bad.inertia_), fontsize=14);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/e0b72f0b8a9cdeac484d7eb17b3f8eb257b6f47a.png]]
+
+
+** Using clustering for image segmentation
+
+Download the laydybug image
+#+begin_src jupyter-python
+images_path = pathlib.Path().joinpath("./images", "unsupervised_learning")
+images_path.mkdir(exist_ok=True)
+DOWNLOAD_ROOT = "https://raw.githubusercontent.com/ageron/handson-ml2/master/"
+filename = "ladybug.png"
+print("Downloading", filename)
+url = DOWNLOAD_ROOT + "images/unsupervised_learning/" + filename
+open(images_path.joinpath(filename), 'wb').write(requests.get(url, allow_redirects=True).content)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+: Downloading ladybug.png
+: 574025
+:END:
+
+#+begin_src jupyter-python  :results scalar
+image = imread(images_path.joinpath(filename))
+image.shape
+#+end_src
+
+#+RESULTS:
+: (533, 800, 3)
+
+#+begin_src jupyter-python
+X = image.reshape(-1, 3)
+
+segmented_imgs = []
+n_colors = (10, 8, 6, 4, 2)
+for n_clusters in n_colors:
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42).fit(X)
+    segmented_img = kmeans.cluster_centers_[kmeans.labels_]
+    segmented_imgs.append(segmented_img.reshape(image.shape))
+
+plt.figure(figsize=(10,5))
+plt.subplots_adjust(wspace=0.05, hspace=0.1)
+
+plt.subplot(231)
+plt.imshow(image)
+plt.title("Original image")
+plt.axis('off')
+
+for idx, n_clusters in enumerate(n_colors):
+    plt.subplot(232 + idx)
+    plt.imshow(segmented_imgs[idx])
+    plt.title("{} colors".format(n_clusters))
+    plt.axis('off')
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/0ea0010f53c607358dd23a220ecf0fd2e8f09627.png]]
+
+
+** Using Clustering for Preprocessing
+
+1,797 grayscale 8×8 images representing digits 0 to 9.
+
+#+begin_src jupyter-python
+X_digits, y_digits = load_digits(return_X_y=True)
+X_train, X_test, y_train, y_test = train_test_split(X_digits, y_digits, random_state=42)
+log_reg = LogisticRegression(multi_class="ovr", solver="lbfgs", max_iter=5000, random_state=42)
+log_reg.fit(X_train, y_train)
+#+end_src
+
+#+RESULTS:
+: LogisticRegression(C=1.0, class_weight=None, dual=False, fit_intercept=True,
+:                    intercept_scaling=1, l1_ratio=None, max_iter=5000,
+:                    multi_class='ovr', n_jobs=None, penalty='l2',
+:                    random_state=42, solver='lbfgs', tol=0.0001, verbose=0,
+:                    warm_start=False)
+
+#+begin_src jupyter-python
+log_reg_score0 = log_reg.score(X_test, y_test)
+log_reg_score0
+#+end_src
+
+#+RESULTS:
+: 0.9688888888888889
+
+Okay, that's our baseline: 96.89% accuracy. Let's see if we can do better by using K-Means as a preprocessing step. We will create a pipeline that will first cluster the training set into 50 clusters and replace the images with their distances to the 50 clusters, then apply a logistic regression model:
+
+#+begin_src jupyter-python
+pipeline = Pipeline([
+    ("kmeans", KMeans(n_clusters=50, random_state=42)),
+    ("log_reg", LogisticRegression(multi_class="ovr", solver="lbfgs", max_iter=5000, random_state=42)),
+])
+pipeline.fit(X_train, y_train)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Pipeline(memory=None,
+         steps=[('kmeans',
+                 KMeans(algorithm='auto', copy_x=True, init='k-means++',
+                        max_iter=300, n_clusters=50, n_init=10,
+                        n_jobs='deprecated', precompute_distances='deprecated',
+                        random_state=42, tol=0.0001, verbose=0)),
+                ('log_reg',
+                 LogisticRegression(C=1.0, class_weight=None, dual=False,
+                                    fit_intercept=True, intercept_scaling=1,
+                                    l1_ratio=None, max_iter=5000,
+                                    multi_class='ovr', n_jobs=None,
+                                    penalty='l2', random_state=42,
+                                    solver='lbfgs', tol=0.0001, verbose=0,
+                                    warm_start=False))],
+         verbose=False)
+#+end_example
+
+#+begin_src jupyter-python
+log_reg_score1 = pipeline.score(X_test, y_test)
+print(log_reg_score1)
+print(1 - (1-log_reg_score1)/(1-log_reg_score0))
+#+end_src
+
+#+RESULTS:
+: 0.9777777777777777
+: 0.28571428571428414
+
+We reduced the error rate by over 28%! But we chose the number of clusters $k$ completely arbitrarily, we can surely do better. Since K-Means is just a preprocessing step in a classification pipeline, finding a good value for $k$ is much simpler than earlier: there's no need to perform silhouette analysis or minimize the inertia, the best value of $k$ is simply the one that results in the best classification performance.
+
+#+begin_src jupyter-python
+param_grid = dict(kmeans__n_clusters=range(2, 100))
+grid_clf = GridSearchCV(pipeline, param_grid, cv=3, verbose=2)
+grid_clf.fit(X_train, y_train)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+#+begin_example
+GridSearchCV(cv=3, error_score=nan,
+             estimator=Pipeline(memory=None,
+                                steps=[('kmeans',
+                                        KMeans(algorithm='auto', copy_x=True,
+                                               init='k-means++', max_iter=300,
+                                               n_clusters=50, n_init=10,
+                                               n_jobs='deprecated',
+                                               precompute_distances='deprecated',
+                                               random_state=42, tol=0.0001,
+                                               verbose=0)),
+                                       ('log_reg',
+                                        LogisticRegression(C=1.0,
+                                                           class_weight=None,
+                                                           dual=False,
+                                                           fit_intercept=True,
+                                                           intercept_scaling=1,
+                                                           l1_ratio=None,
+                                                           max_iter=5000,
+                                                           multi_class='ovr',
+                                                           n_jobs=None,
+                                                           penalty='l2',
+                                                           random_state=42,
+                                                           solver='lbfgs',
+                                                           tol=0.0001,
+                                                           verbose=0,
+                                                           warm_start=False))],
+                                verbose=False),
+             n_jobs=None, param_grid={'kmeans__n_clusters': range(2, 100)},
+             pre_dispatch='2*n_jobs', refit=True, return_train_score=False,
+             scoring=None, verbose=2)
+#+end_example
+:END:
+
+#+begin_src jupyter-python
+grid_clf.best_params_
+#+end_src
+
+#+RESULTS:
+| kmeans__n_clusters | : | 88 |
+
+#+begin_src jupyter-python
+grid_clf.score(X_test, y_test)
+#+end_src
+
+#+RESULTS:
+: 0.9822222222222222
+
+
+** Clustering for Semi-Supervised Learning
+
+#+begin_src jupyter-python
+n_labeled = 50
+log_reg = LogisticRegression(multi_class="ovr", solver="lbfgs", random_state=42)
+log_reg.fit(X_train[:n_labeled], y_train[:n_labeled])
+log_reg.score(X_test, y_test)
+#+end_src
+
+#+RESULTS:
+: 0.8333333333333334
+
+Let's see how we can do better. First, let's cluster the training set into 50 clusters, then for each cluster let's find the image closest to the centroid. We will call these images the representative images:
+
+#+begin_src jupyter-python
+k = 50
+kmeans = KMeans(n_clusters=k, random_state=42)
+X_digits_dist = kmeans.fit_transform(X_train)  # distances to all 50 centroids: 1347x50
+representative_digit_idx = np.argmin(X_digits_dist, axis=0)  # shortest to 50 centroids: 1x50
+X_representative_digits = X_train[representative_digit_idx]  # 50 images: 50x64
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+plt.figure(figsize=(8, 2))
+for index, X_representative_digit in enumerate(X_representative_digits):
+    plt.subplot(k // 10, 10, index + 1)
+    plt.imshow(X_representative_digit.reshape(8, 8), cmap="binary", interpolation="bilinear")
+    plt.axis('off')
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/5b612811a58dfc14988bfcddaadcdb522a8a5446.png]]
+
+Manually label the representative digits:
+#+begin_src jupyter-python
+y_representative_digits = np.array([
+    4, 8, 0, 6, 8, 3, 7, 7, 9, 2,
+    5, 5, 8, 5, 2, 1, 2, 9, 6, 1,
+    1, 6, 9, 0, 8, 3, 0, 7, 4, 1,
+    6, 5, 2, 4, 1, 8, 6, 3, 9, 2,
+    4, 2, 9, 4, 7, 6, 2, 3, 1, 1])
+#+end_src
+
+#+RESULTS:
+
+Now we have a dataset with just 50 labeled instances, but instead of being completely random instances, each of them is a representative image of its cluster. Let's see if the performance is any better:
+
+#+begin_src jupyter-python
+log_reg = LogisticRegression(multi_class="ovr", solver="lbfgs", max_iter=5000, random_state=42)
+log_reg.fit(X_representative_digits, y_representative_digits)
+log_reg.score(X_test, y_test)
+#+end_src
+
+#+RESULTS:
+: 0.9222222222222223
+
+#+begin_src jupyter-python
+
+#+end_src
+
+
+Wow! We jumped from 83.3% accuracy to 92.2%, although we are still only training the model on 50 instances. Since it's often costly and painful to label instances, especially when it has to be done manually by experts, it's a good idea to make them label representative instances rather than just random instances.
+
+But perhaps we can go one step further: what if we propagated the labels to all the other instances in the same cluster?
+
+#+begin_src jupyter-python
+y_train_propagated = np.empty(len(X_train), dtype=np.int32)
+for i in range(k):
+    y_train_propagated[kmeans.labels_==i] = y_representative_digits[i]
+
+log_reg = LogisticRegression(multi_class='ovr', solver='lbfgs', max_iter=5000, random_state=42)
+log_reg.fit(X_train, y_train_propagated)
+#+end_src
+
+#+RESULTS:
+: LogisticRegression(C=1.0, class_weight=None, dual=False, fit_intercept=True,
+:                    intercept_scaling=1, l1_ratio=None, max_iter=5000,
+:                    multi_class='ovr', n_jobs=None, penalty='l2',
+:                    random_state=42, solver='lbfgs', tol=0.0001, verbose=0,
+:                    warm_start=False)
+
+#+begin_src jupyter-python
+log_reg.score(X_test, y_test)
+#+end_src
+
+#+RESULTS:
+: 0.9333333333333333
+
+We got a tiny little accuracy boost. Better than nothing, but we should probably have propagated the labels only to the instances closest to the centroid, because by propagating to the full cluster, we have certainly included some outliers. Let's only propagate the labels to the 20th percentile closest to the centroid:
+
+#+begin_src jupyter-python
+percentile_closest = 20
+
+X_cluster_dist = X_digits_dist[np.arange(len(X_train)), kmeans.labels_]
+for i in range(k):
+    in_cluster = (kmeans.labels_ == i)
+    cluster_dist = X_cluster_dist[in_cluster]
+    cutoff_distance = np.percentile(cluster_dist, percentile_closest)
+    above_cutoff = (X_cluster_dist > cutoff_distance)
+    X_cluster_dist[in_cluster & above_cutoff] = -1
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+partially_propagated = (X_cluster_dist != -1)
+X_train_partially_propagated = X_train[partially_propagated]
+y_train_partially_propagated = y_train_propagated[partially_propagated]
+
+log_reg = LogisticRegression(multi_class='ovr', solver='lbfgs', max_iter=5000, random_state=42)
+log_reg.fit(X_train_partially_propagated, y_train_partially_propagated)
+#+end_src
+
+#+RESULTS:
+: LogisticRegression(C=1.0, class_weight=None, dual=False, fit_intercept=True,
+:                    intercept_scaling=1, l1_ratio=None, max_iter=5000,
+:                    multi_class='ovr', n_jobs=None, penalty='l2',
+:                    random_state=42, solver='lbfgs', tol=0.0001, verbose=0,
+:                    warm_start=False)
+
+#+begin_src jupyter-python
+log_reg.score(X_test, y_test)
+#+end_src
+
+#+RESULTS:
+: 0.94
+
+Nice! With just 50 labeled instances (just 5 examples per class on average!), we got 94% performance, which is pretty close to the performance of logistic regression on the fully labeled digits dataset (which was 96.9%).
+
+This is because the propagated labels are actually pretty good: their accuracy is very close to 99%:
+
+#+begin_src jupyter-python
+np.mean(y_train_partially_propagated == y_train[partially_propagated])
+#+end_src
+
+#+RESULTS:
+: 0.9896907216494846
+
+
+** DBSCAN
+
+#+begin_src jupyter-python
+X, y = make_moons(n_samples=1000, noise=0.05, random_state=42)
+
+dbscan = DBSCAN(eps=0.05, min_samples=5)
+dbscan.fit(X)
+#+end_src
+
+#+RESULTS:
+: DBSCAN(algorithm='auto', eps=0.05, leaf_size=30, metric='euclidean',
+:        metric_params=None, min_samples=5, n_jobs=None, p=None)
+
+#+begin_src jupyter-python
+print(dbscan.labels_[:10])
+print(len(dbscan.core_sample_indices_))
+print(dbscan.core_sample_indices_[:10])
+print(dbscan.components_[:3])
+#+end_src
+
+#+RESULTS:
+: [ 0  2 -1 -1  1  0  0  0  2  5]
+: 808
+: [ 0  4  5  6  7  8 10 11 12 13]
+: [[-0.02137124  0.40618608]
+:  [-0.84192557  0.53058695]
+:  [ 0.58930337 -0.32137599]]
+
+#+begin_src jupyter-python
+np.unique(dbscan.labels_)
+#+end_src
+
+#+RESULTS:
+: array([-1,  0,  1,  2,  3,  4,  5,  6])
+
+#+begin_src jupyter-python
+dbscan2 = DBSCAN(eps=0.2)
+dbscan2.fit(X)
+#+end_src
+
+#+RESULTS:
+: DBSCAN(algorithm='auto', eps=0.2, leaf_size=30, metric='euclidean',
+:        metric_params=None, min_samples=5, n_jobs=None, p=None)
+
+#+begin_src jupyter-python
+def plot_dbscan(dbscan, X, size, show_xlabels=True, show_ylabels=True):
+    core_mask = np.zeros_like(dbscan.labels_, dtype=bool)
+    core_mask[dbscan.core_sample_indices_] = True
+    anomalies_mask = dbscan.labels_ == -1
+    non_core_mask = ~(core_mask | anomalies_mask)
+
+    cores = dbscan.components_
+    anomalies = X[anomalies_mask]
+    non_cores = X[non_core_mask]
+
+    plt.scatter(cores[:, 0], cores[:, 1],
+                c=dbscan.labels_[core_mask], marker='o', s=size, cmap="Paired")
+    plt.scatter(cores[:, 0], cores[:, 1], marker='*', s=20, c=dbscan.labels_[core_mask])
+    plt.scatter(anomalies[:, 0], anomalies[:, 1],
+                c="r", marker="x", s=100)
+    plt.scatter(non_cores[:, 0], non_cores[:, 1], c=dbscan.labels_[non_core_mask], marker=".")
+    if show_xlabels:
+        plt.xlabel("$x_1$", fontsize=14)
+    else:
+        plt.tick_params(labelbottom=False)
+    if show_ylabels:
+        plt.ylabel("$x_2$", fontsize=14, rotation=0)
+    else:
+        plt.tick_params(labelleft=False)
+    plt.title("eps={:.2f}, min_samples={}".format(dbscan.eps, dbscan.min_samples), fontsize=14)
+
+plt.figure(figsize=(9, 3.2))
+
+plt.subplot(121)
+plot_dbscan(dbscan, X, size=100)
+
+plt.subplot(122)
+plot_dbscan(dbscan2, X, size=600, show_ylabels=False);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/e7f3cdc726396d7be7cf8d6d892eb3ad67a4f2e3.png]]
+
+#+begin_src jupyter-python
+dbscan = dbscan2
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+knn = KNeighborsClassifier(n_neighbors=50)
+knn.fit(dbscan.components_, dbscan.labels_[dbscan.core_sample_indices_])
+#+end_src
+
+#+RESULTS:
+: KNeighborsClassifier(algorithm='auto', leaf_size=30, metric='minkowski',
+:                      metric_params=None, n_jobs=None, n_neighbors=50, p=2,
+:                      weights='uniform')
+
+#+begin_src jupyter-python
+X_new = np.array([[-0.5, 0], [0, 0.5], [1, -0.1], [2, 1]])
+knn.predict(X_new)
+#+end_src
+
+#+RESULTS:
+: array([1, 0, 1, 0])
+
+#+begin_src jupyter-python
+knn.predict_proba(X_new)
+#+end_src
+
+#+RESULTS:
+: array([[0.18, 0.82],
+:        [1.  , 0.  ],
+:        [0.12, 0.88],
+:        [1.  , 0.  ]])
+
+#+begin_src jupyter-python
+plt.figure(figsize=(6, 3))
+plot_decision_boundaries(knn, X, show_centroids=False)
+plt.scatter(X_new[:, 0], X_new[:, 1], c="b", marker="+", s=200, zorder=10);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/3af6b57f468af11ccad7729225d4676d57c98096.png]]
+
+#+begin_src jupyter-python
+y_dist, y_pred_idx = knn.kneighbors(X_new, n_neighbors=1)
+y_pred = dbscan.labels_[dbscan.core_sample_indices_][y_pred_idx]
+y_pred[y_dist > 0.2] = -1
+y_pred.ravel()
+#+end_src
+
+#+RESULTS:
+: array([-1,  0,  1, -1])
+
+
+** Other Clustering Algorithms
+
+*** Spectral Clustering
+
+#+begin_src jupyter-python
+sc1 = SpectralClustering(n_clusters=2, gamma=100, random_state=42)
+sc1.fit(X)
+#+end_src
+
+#+RESULTS:
+: SpectralClustering(affinity='rbf', assign_labels='kmeans', coef0=1, degree=3,
+:                    eigen_solver=None, eigen_tol=0.0, gamma=100,
+:                    kernel_params=None, n_clusters=2, n_components=None,
+:                    n_init=10, n_jobs=None, n_neighbors=10, random_state=42,
+:                    verbose=False)
+
+#+begin_src jupyter-python
+sc2 = SpectralClustering(n_clusters=2, gamma=1, random_state=42)
+sc2.fit(X)
+#+end_src
+
+#+RESULTS:
+: SpectralClustering(affinity='rbf', assign_labels='kmeans', coef0=1, degree=3,
+:                    eigen_solver=None, eigen_tol=0.0, gamma=1,
+:                    kernel_params=None, n_clusters=2, n_components=None,
+:                    n_init=10, n_jobs=None, n_neighbors=10, random_state=42,
+:                    verbose=False)
+
+#+begin_src jupyter-python
+np.percentile(sc1.affinity_matrix_, 95)
+#+end_src
+
+#+RESULTS:
+: 0.04251990648936265
+
+#+begin_src jupyter-python
+def plot_spectral_clustering(sc, X, size, alpha, show_xlabels=True, show_ylabels=True):
+    plt.scatter(X[:, 0], X[:, 1], marker='o', s=size, c='gray', cmap="Paired", alpha=alpha)
+    plt.scatter(X[:, 0], X[:, 1], marker='o', s=30, c='w')
+    plt.scatter(X[:, 0], X[:, 1], marker='.', s=10, c=sc.labels_, cmap="Paired")
+
+    if show_xlabels:
+        plt.xlabel("$x_1$", fontsize=14)
+    else:
+        plt.tick_params(labelbottom=False)
+    if show_ylabels:
+        plt.ylabel("$x_2$", fontsize=14, rotation=0)
+    else:
+        plt.tick_params(labelleft=False)
+    plt.title("RBF gamma={}".format(sc.gamma), fontsize=14)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+plt.figure(figsize=(9, 3.2))
+
+plt.subplot(121)
+plot_spectral_clustering(sc1, X, size=500, alpha=0.1)
+
+plt.subplot(122)
+plot_spectral_clustering(sc2, X, size=4000, alpha=0.01, show_ylabels=False);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/da612268accb3e9809ea49c4cc602c9fd857786c.png]]
+
+
+*** Agglomerative Clustering
+
+#+begin_src jupyter-python
+X = np.array([0, 2, 5, 8.5]).reshape(-1, 1)
+agg = AgglomerativeClustering(linkage="complete").fit(X)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+def learned_parameters(estimator):
+    return [attrib for attrib in dir(estimator)
+            if attrib.endswith("_") and not attrib.startswith("_")]
+
+print(learned_parameters(agg))
+#+end_src
+
+#+RESULTS:
+: ['children_', 'labels_', 'n_clusters_', 'n_connected_components_', 'n_features_in_', 'n_leaves_']
+
+#+begin_src jupyter-python
+agg.children_
+#+end_src
+
+#+RESULTS:
+: array([[0, 1],
+:        [2, 3],
+:        [4, 5]])
+
+
+* Gaussian Mixtures
+
+#+begin_src jupyter-python
+X1, y1 = make_blobs(n_samples=1000, centers=((4, -4), (0, 0)), random_state=42)
+X1 = X1 @ np.array([[0.374, 0.95], [0.732, 0.598]])
+X2, y2 = make_blobs(n_samples=250, centers=1, random_state=42)
+X2 = X2 + [6, -8]
+X = np.r_[X1, X2]
+y = np.r_[y1, y2]
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+gm = GaussianMixture(n_components=3, n_init=10, random_state=42)
+gm.fit(X)
+print(f"{gm.weights_ = }")
+print(f"{gm.means_ = }")
+print(f"{gm.covariances_ = }")
+print(f"{gm.converged_ = }")
+print(f"{gm.n_iter_ = }")
+#+end_src
+
+#+RESULTS:
+#+begin_example
+gm.weights_ = array([0.39025715, 0.40007391, 0.20966893])
+gm.means_ = array([[ 0.05131611,  0.07521837],
+       [-1.40763156,  1.42708225],
+       [ 3.39893794,  1.05928897]])
+gm.covariances_ = array([[[ 0.68799922,  0.79606357],
+        [ 0.79606357,  1.21236106]],
+
+       [[ 0.63479409,  0.72970799],
+        [ 0.72970799,  1.1610351 ]],
+
+       [[ 1.14833585, -0.03256179],
+        [-0.03256179,  0.95490931]]])
+gm.converged_ = True
+gm.n_iter_ = 4
+#+end_example
+
+Hard clustering:
+#+begin_src jupyter-python
+gm.predict(X)
+#+end_src
+
+#+RESULTS:
+: array([0, 0, 1, ..., 2, 2, 2])
+
+Soft clustering:
+#+begin_src jupyter-python
+gm.predict_proba(X)
+#+end_src
+
+#+RESULTS:
+: array([[9.76741808e-01, 6.78581203e-07, 2.32575136e-02],
+:        [9.82832955e-01, 6.76173663e-04, 1.64908714e-02],
+:        [7.46494398e-05, 9.99923327e-01, 2.02398402e-06],
+:        ...,
+:        [4.26050456e-07, 2.15512941e-26, 9.99999574e-01],
+:        [5.04987704e-16, 1.48083217e-41, 1.00000000e+00],
+:        [2.24602826e-15, 8.11457779e-41, 1.00000000e+00]])
+
+Generative model.
+#+begin_src jupyter-python
+X_new, y_new = gm.sample(6)
+print(f"{X_new = }")
+print(f"{y_new = }")
+#+end_src
+
+#+RESULTS:
+: X_new = array([[-0.86944074, -0.32767626],
+:        [ 0.29836051,  0.28297011],
+:        [-2.8014927 , -0.09047309],
+:        [ 3.98203732,  1.49951491],
+:        [ 3.81677148,  0.53095244],
+:        [ 2.84104923, -0.73858639]])
+: y_new = array([0, 0, 1, 2, 2, 2])
+
+Notice they are sampled from sequentially from each cluster.
+
+Estimate the log of the PDF at any location.
+
+#+begin_src jupyter-python
+gm.score_samples(X)
+#+end_src
+
+#+RESULTS:
+: array([-2.60768954, -3.57110232, -3.32987086, ..., -3.51347241,
+:        -4.39798588, -3.80746532])
+
+#+begin_src jupyter-python
+resolution = 100
+grid = np.arange(-10, 10, 1 / resolution)
+xx, yy = np.meshgrid(grid, grid)
+X_full = np.c_[xx.ravel(), yy.ravel()]
+
+pdf = np.exp(gm.score_samples(X_full))
+pdf_probas = pdf * (1/resolution) ** 2  # integrand on each small square grid
+pdf_probas.sum()
+#+end_src
+
+#+RESULTS:
+: 0.9999999999215021
+
+#+begin_src jupyter-python
+def plot_gaussian_mixture(clusterer, X, resolution=1000, show_ylabels=True):
+    mins = X.min(axis=0) - 0.1
+    maxs = X.max(axis=0) + 0.1
+    xx, yy = np.meshgrid(np.linspace(mins[0], maxs[0], resolution),
+                         np.linspace(mins[1], maxs[1], resolution))
+    Z = -clusterer.score_samples(np.c_[xx.ravel(), yy.ravel()])
+    Z = Z.reshape(xx.shape)
+
+    plt.contourf(xx, yy, Z,
+                 norm=LogNorm(vmin=1.0, vmax=30.0),
+                 levels=np.logspace(0, 2, 12))
+    plt.contour(xx, yy, Z,
+                norm=LogNorm(vmin=1.0, vmax=30.0),
+                levels=np.logspace(0, 2, 12),
+                linewidths=1, colors='k')
+
+    Z = clusterer.predict(np.c_[xx.ravel(), yy.ravel()])
+    Z = Z.reshape(xx.shape)
+    plt.contour(xx, yy, Z,
+                linewidths=2, colors='r', linestyles='dashed')
+
+    plt.plot(X[:, 0], X[:, 1], 'k.', markersize=2)
+    plot_centroids(clusterer.means_, clusterer.weights_)
+
+    plt.xlabel("$x_1$", fontsize=14)
+    if show_ylabels:
+        plt.ylabel("$x_2$", fontsize=14, rotation=0)
+    else:
+        plt.tick_params(labelleft=False)
+
+plt.figure(figsize=(8,4))
+plot_gaussian_mixture(gm, X)
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/90a2fc85b05f18a90b5834263a5b9175430fbcf3.png]]
+
+
+You can impose constraints on the covariance matrices that the algorithm looks for by setting the ~covariance_type~ hyperparameter:
+    "~full~" (default): no constraint, all clusters can take on any ellipsoidal shape of any size.
+    "~tied~": all clusters must have the same shape, which can be any ellipsoid (i.e., they all share the same covariance matrix).
+    "~spherical~": all clusters must be spherical, but they can have different diameters (i.e., different variances).
+    "~diag~": clusters can take on any ellipsoidal shape of any size, but the ellipsoid's axes must be parallel to the axes (i.e., the covariance matrices must be diagonal).
+
+#+begin_src jupyter-python
+gm_full = GaussianMixture(n_components=3, n_init=10, covariance_type="full", random_state=42)
+gm_tied = GaussianMixture(n_components=3, n_init=10, covariance_type="tied", random_state=42)
+gm_spherical = GaussianMixture(n_components=3, n_init=10, covariance_type="spherical", random_state=42)
+gm_diag = GaussianMixture(n_components=3, n_init=10, covariance_type="diag", random_state=42)
+gm_full.fit(X)
+gm_tied.fit(X)
+gm_spherical.fit(X)
+gm_diag.fit(X)
+#+end_src
+
+#+RESULTS:
+: GaussianMixture(covariance_type='diag', init_params='kmeans', max_iter=100,
+:                 means_init=None, n_components=3, n_init=10,
+:                 precisions_init=None, random_state=42, reg_covar=1e-06,
+:                 tol=0.001, verbose=0, verbose_interval=10, warm_start=False,
+:                 weights_init=None)
+
+#+begin_src jupyter-python
+def compare_gaussian_mixtures(gm1, gm2, X):
+    plt.figure(figsize=(9, 4))
+
+    plt.subplot(121)
+    plot_gaussian_mixture(gm1, X)
+    plt.title('covariance_type="{}"'.format(gm1.covariance_type), fontsize=14)
+
+    plt.subplot(122)
+    plot_gaussian_mixture(gm2, X, show_ylabels=False)
+    plt.title('covariance_type="{}"'.format(gm2.covariance_type), fontsize=14)
+
+compare_gaussian_mixtures(gm_tied, gm_spherical, X)
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/c63a42a08d6ed679154a39c39551fea355fb65bf.png]]
+
+#+begin_src jupyter-python
+compare_gaussian_mixtures(gm_full, gm_diag, X)
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/d572792edbb8c4660afa44e75aee406117fb9899.png]]
+
+
+** Anomaly Detection using Gaussian Mixtures
+
+#+begin_src jupyter-python
+densities = gm.score_samples(X)
+density_threshold = np.percentile(densities, 4)
+anomalies = X[densities < density_threshold]
+
+plt.figure(figsize=(8, 4))
+plot_gaussian_mixture(gm, X)
+plt.scatter(anomalies[:, 0], anomalies[:, 1], color='r', marker='*')
+plt.ylim(top=5.1);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/e77cd5cfeb29f3bcd2d2eb96e335a6f6602ccae8.png]]
+
+** Model Selection
+
+#+begin_src jupyter-python
+gm.bic(X)
+#+end_src
+
+#+RESULTS:
+: 8189.747000497186
+
+#+begin_src jupyter-python
+gm.aic(X)
+#+end_src
+
+#+RESULTS:
+: 8102.521720382148
+
+Computer BIC manually.
+There's one weight per cluster, but the sum must be equal to 1, so we have one degree of freedom less, hence the -1.
+#+begin_src jupyter-python
+n_clusters = 3
+n_dims = 2
+n_params_for_weights = n_clusters - 1
+n_params_for_means = n_clusters * n_dims
+n_params_for_covariance = n_clusters * n_dims * (n_dims + 1) // 2
+n_params = n_params_for_weights + n_params_for_means + n_params_for_covariance
+
+# max log-likelihood: log(L^) = sum(log(L^) for each sample), assuming samples are i.i.d.
+# gm.score(X) = gm.score_samples(X).sum() / len(X)
+max_log_likelihood = gm.score(X) * len(X)  # = gm.score_samples(X).sum()
+
+bic = -2 * max_log_likelihood + np.log(len(X)) * n_params
+aic = -2 * max_log_likelihood + 2 * n_params
+
+print(f"{bic = }\n{aic = }")
+#+end_src
+
+#+RESULTS:
+: bic = 8189.747000497186
+: aic = 8102.521720382148
+
+BIC vs. k
+
+#+begin_src jupyter-python
+gms_per_k = [GaussianMixture(n_components=k, n_init=10, random_state=42).fit(X)
+             for k in range(1, 11)]
+bics = [model.bic(X) for model in gms_per_k]
+aics = [model.aic(X) for model in gms_per_k]
+
+plt.figure(figsize=(8, 3))
+plt.plot(range(1, 11), bics, "bo-", label="BIC")
+plt.plot(range(1, 11), aics, "go--", label="AIC")
+plt.xlabel("$k$", fontsize=14)
+plt.ylabel("Information Criterion", fontsize=14)
+plt.axis([1, 9.5, np.min(aics) - 50, np.max(aics) + 50])
+plt.annotate('Minimum',
+             xy=(3, bics[2]),
+             xytext=(0.35, 0.6),
+             textcoords='figure fraction',
+             fontsize=14,
+             arrowprops=dict(facecolor='black', shrink=0.1)
+            )
+plt.legend();
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/c00ef180df4240972857845b80802075d617c65e.png]]
+
+Search best hyperparameters.
+
+#+begin_src jupyter-python
+min_bic = np.infty
+
+for k in range(1, 11):
+    for covariance_type in ("full", "tied", "spherical", "diag"):
+        bic = GaussianMixture(n_components=k, n_init=10,
+                              covariance_type=covariance_type,
+                              random_state=42).fit(X).bic(X)
+        if bic < min_bic:
+            min_bic = bic
+            best_k = k
+            best_covariance_type = covariance_type
+
+print(f"{best_k = }\n{best_covariance_type = }")
+#+end_src
+
+#+RESULTS:
+: best_k = 3
+: best_covariance_type = 'full'
+
+
+** Variational Bayesian Gaussian Mixtures
+
+Rather than manually searching for the optimal number of clusters, it is possible to use instead the BayesianGaussianMixture class which is capable of giving weights equal (or close) to zero to unnecessary clusters. Just set the number of components to a value that you believe is greater than the optimal number of clusters, and the algorithm will eliminate the unnecessary clusters automatically.
+
+#+begin_src jupyter-python
+bgm = BayesianGaussianMixture(n_components=10, n_init=10, random_state=42)
+bgm.fit(X)
+#+end_src
+
+#+RESULTS:
+: BayesianGaussianMixture(covariance_prior=None, covariance_type='full',
+:                         degrees_of_freedom_prior=None, init_params='kmeans',
+:                         max_iter=100, mean_precision_prior=None,
+:                         mean_prior=None, n_components=10, n_init=10,
+:                         random_state=42, reg_covar=1e-06, tol=0.001, verbose=0,
+:                         verbose_interval=10, warm_start=False,
+:                         weight_concentration_prior=None,
+:                         weight_concentration_prior_type='dirichlet_process')
+
+The algorithm automatically detected that only 3 components are needed:
+#+begin_src jupyter-python
+np.round(bgm.weights_, 2)
+#+end_src
+
+#+RESULTS:
+: array([0.4 , 0.21, 0.4 , 0.  , 0.  , 0.  , 0.  , 0.  , 0.  , 0.  ])
+
+#+begin_src jupyter-python
+plt.figure(figsize=(8,5))
+plot_gaussian_mixture(bgm, X);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/8ae17ee0faabb3665f7b682201c78080f39b0cf2.png]]
+
+Low concentration prior vs. High concentration prior
+
+#+begin_src jupyter-python
+bgm_low = BayesianGaussianMixture(n_components=10, max_iter=1000, n_init=1,
+                                  weight_concentration_prior=0.01, random_state=42)
+bgm_high = BayesianGaussianMixture(n_components=10, max_iter=1000, n_init=1,
+                                  weight_concentration_prior=10000, random_state=42)
+nn = 73
+bgm_low.fit(X[:nn])
+bgm_high.fit(X[:nn])
+#+end_src
+
+#+RESULTS:
+: BayesianGaussianMixture(covariance_prior=None, covariance_type='full',
+:                         degrees_of_freedom_prior=None, init_params='kmeans',
+:                         max_iter=1000, mean_precision_prior=None,
+:                         mean_prior=None, n_components=10, n_init=1,
+:                         random_state=42, reg_covar=1e-06, tol=0.001, verbose=0,
+:                         verbose_interval=10, warm_start=False,
+:                         weight_concentration_prior=10000,
+:                         weight_concentration_prior_type='dirichlet_process')
+
+#+begin_src jupyter-python
+np.round(bgm_low.weights_, 2)
+#+end_src
+
+#+RESULTS:
+: array([0.52, 0.48, 0.  , 0.  , 0.  , 0.  , 0.  , 0.  , 0.  , 0.  ])
+
+#+begin_src jupyter-python
+np.round(bgm_high.weights_, 2)
+#+end_src
+
+#+RESULTS:
+: array([0.01, 0.18, 0.27, 0.11, 0.01, 0.01, 0.01, 0.01, 0.37, 0.01])
+
+#+begin_src jupyter-python
+plt.figure(figsize=(9, 4))
+
+plt.subplot(121)
+plot_gaussian_mixture(bgm_low, X[:nn])
+plt.title("weight_concentration_prior = 0.01", fontsize=14)
+
+plt.subplot(122)
+plot_gaussian_mixture(bgm_high, X[:nn], show_ylabels=False)
+plt.title("weight_concentration_prior = 10000", fontsize=14);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/743c004ca16b111184a249095e0fd887ff47d905.png]]
+
+Note: the fact that you see only 3 regions in the right plot although there are 4 centroids is not a bug. The weight of the top-right cluster is much larger than the weight of the lower-right cluster, so the probability that any given point in this region belongs to the top right cluster is greater than the probability that it belongs to the lower-right cluster.
+
+#+begin_src jupyter-python
+X_moons, y_moons = make_moons(n_samples=1000, noise=0.05, random_state=42)
+
+bgm = BayesianGaussianMixture(n_components=10, n_init=10, random_state=42)
+bgm.fit(X_moons)
+#+end_src
+
+#+RESULTS:
+: BayesianGaussianMixture(covariance_prior=None, covariance_type='full',
+:                         degrees_of_freedom_prior=None, init_params='kmeans',
+:                         max_iter=100, mean_precision_prior=None,
+:                         mean_prior=None, n_components=10, n_init=10,
+:                         random_state=42, reg_covar=1e-06, tol=0.001, verbose=0,
+:                         verbose_interval=10, warm_start=False,
+:                         weight_concentration_prior=None,
+:                         weight_concentration_prior_type='dirichlet_process')
+
+#+begin_src jupyter-python
+plt.figure(figsize=(9, 3.2))
+
+plt.subplot(121)
+plot_data(X_moons)
+plt.xlabel("$x_1$", fontsize=14)
+plt.ylabel("$x_2$", fontsize=14, rotation=0)
+
+plt.subplot(122)
+plot_gaussian_mixture(bgm, X_moons, show_ylabels=False);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/51a7f524bb5e96aab0be28b124273b2ceb1db8ac.png]]
+
+Oops, not great... instead of detecting 2 moon-shaped clusters, the algorithm detected 8 ellipsoidal clusters. However, the density plot does not look too bad, so it might be usable for anomaly detection.
+
+** Likelihood Function
+
+#+begin_src jupyter-python
+xx = np.linspace(-6, 4, 101)
+ss = np.linspace(1, 2, 101)
+XX, SS = np.meshgrid(xx, ss)
+
+ZZ = 2 * stats.norm.pdf(XX - 1.0, 0, SS) + stats.norm.pdf(XX + 4.0, 0, SS)
+ZZ = ZZ / ZZ.sum(axis=1)[:, np.newaxis] / (xx[1] - xx[0])
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+plt.figure(figsize=(8, 4.5))
+
+x_idx = 85
+s_idx = 30
+
+plt.subplot(221)
+plt.contourf(XX, SS, ZZ, cmap="GnBu")
+plt.plot([-6, 4], [ss[s_idx], ss[s_idx]], "k-", linewidth=2)
+plt.plot([xx[x_idx], xx[x_idx]], [1, 2], "b-", linewidth=2)
+plt.xlabel(r"$x$")
+plt.ylabel(r"$\theta$", fontsize=14, rotation=0)
+plt.title(r"Model $f(x; \theta)$", fontsize=14)
+
+plt.subplot(222)
+plt.plot(ss, ZZ[:, x_idx], "b-")
+max_idx = np.argmax(ZZ[:, x_idx])
+max_val = np.max(ZZ[:, x_idx])
+plt.plot(ss[max_idx], max_val, "r.")
+plt.plot([ss[max_idx], ss[max_idx]], [0, max_val], "r:")
+plt.plot([0, ss[max_idx]], [max_val, max_val], "r:")
+plt.text(1.01, max_val + 0.005, r"$\hat{L}$", fontsize=14)
+plt.text(ss[max_idx]+ 0.01, 0.055, r"$\hat{\theta}$", fontsize=14)
+plt.text(ss[max_idx]+ 0.01, max_val - 0.012, r"$Max$", fontsize=12)
+plt.axis([1, 2, 0.05, 0.15])
+plt.xlabel(r"$\theta$", fontsize=14)
+plt.grid(True)
+plt.text(1.99, 0.135, r"$=f(x=2.5; \theta)$", fontsize=14, ha="right")
+plt.title(r"Likelihood function $\mathcal{L}(\theta|x=2.5)$", fontsize=14)
+
+plt.subplot(223)
+plt.plot(xx, ZZ[s_idx], "k-")
+plt.axis([-6, 4, 0, 0.25])
+plt.xlabel(r"$x$", fontsize=14)
+plt.grid(True)
+plt.title(r"PDF $f(x; \theta=1.3)$", fontsize=14)
+verts = [(xx[41], 0)] + list(zip(xx[41:81], ZZ[s_idx, 41:81])) + [(xx[80], 0)]
+poly = Polygon(verts, facecolor='0.9', edgecolor='0.5')
+plt.gca().add_patch(poly)
+
+plt.subplot(224)
+plt.plot(ss, np.log(ZZ[:, x_idx]), "b-")
+max_idx = np.argmax(np.log(ZZ[:, x_idx]))
+max_val = np.max(np.log(ZZ[:, x_idx]))
+plt.plot(ss[max_idx], max_val, "r.")
+plt.plot([ss[max_idx], ss[max_idx]], [-5, max_val], "r:")
+plt.plot([0, ss[max_idx]], [max_val, max_val], "r:")
+plt.axis([1, 2, -2.4, -2])
+plt.xlabel(r"$\theta$", fontsize=14)
+plt.text(ss[max_idx]+ 0.01, max_val - 0.05, r"$Max$", fontsize=12)
+plt.text(ss[max_idx]+ 0.01, -2.39, r"$\hat{\theta}$", fontsize=14)
+plt.text(1.01, max_val + 0.02, r"$\log \, \hat{L}$", fontsize=14)
+plt.grid(True)
+plt.title(r"$\log \, \mathcal{L}(\theta|x=2.5)$", fontsize=14);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/c2813c23073461e1a6a353bddb80cfba8b0ee13d.png]]
+
+
+
+
+* Exercises
+
+** 10. Cluster the Olivetti Faces Dataset
+
+*** Load data
+
+#+begin_src jupyter-python
+olivetti = fetch_olivetti_faces()
+print(olivetti.DESCR)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+downloading Olivetti faces from https://ndownloader.figshare.com/files/5976027 to /home/ning/scikit_learn_data
+.. _olivetti_faces_dataset:
+
+The Olivetti faces dataset
+--------------------------
+
+`This dataset contains a set of face images`_ taken between April 1992 and
+April 1994 at AT&T Laboratories Cambridge. The
+:func:`sklearn.datasets.fetch_olivetti_faces` function is the data
+fetching / caching function that downloads the data
+archive from AT&T.
+
+.. _This dataset contains a set of face images: http://www.cl.cam.ac.uk/research/dtg/attarchive/facedatabase.html
+
+As described on the original website:
+
+    There are ten different images of each of 40 distinct subjects. For some
+    subjects, the images were taken at different times, varying the lighting,
+    facial expressions (open / closed eyes, smiling / not smiling) and facial
+    details (glasses / no glasses). All the images were taken against a dark
+    homogeneous background with the subjects in an upright, frontal position
+    (with tolerance for some side movement).
+
+,**Data Set Characteristics:**
+
+    =================   =====================
+    Classes                                40
+    Samples total                         400
+    Dimensionality                       4096
+    Features            real, between 0 and 1
+    =================   =====================
+
+The image is quantized to 256 grey levels and stored as unsigned 8-bit
+integers; the loader will convert these to floating point values on the
+interval [0, 1], which are easier to work with for many algorithms.
+
+The "target" for this database is an integer from 0 to 39 indicating the
+identity of the person pictured; however, with only 10 examples per class, this
+relatively small dataset is more interesting from an unsupervised or
+semi-supervised perspective.
+
+The original dataset consisted of 92 x 112, while the version available here
+consists of 64x64 images.
+
+When using these images, please give credit to AT&T Laboratories Cambridge.
+#+end_example
+
+#+begin_src jupyter-python
+print(olivetti.data.shape)
+print(olivetti.target)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+(400, 4096)
+[ 0  0  0  0  0  0  0  0  0  0  1  1  1  1  1  1  1  1  1  1  2  2  2  2
+  2  2  2  2  2  2  3  3  3  3  3  3  3  3  3  3  4  4  4  4  4  4  4  4
+  4  4  5  5  5  5  5  5  5  5  5  5  6  6  6  6  6  6  6  6  6  6  7  7
+  7  7  7  7  7  7  7  7  8  8  8  8  8  8  8  8  8  8  9  9  9  9  9  9
+  9  9  9  9 10 10 10 10 10 10 10 10 10 10 11 11 11 11 11 11 11 11 11 11
+ 12 12 12 12 12 12 12 12 12 12 13 13 13 13 13 13 13 13 13 13 14 14 14 14
+ 14 14 14 14 14 14 15 15 15 15 15 15 15 15 15 15 16 16 16 16 16 16 16 16
+ 16 16 17 17 17 17 17 17 17 17 17 17 18 18 18 18 18 18 18 18 18 18 19 19
+ 19 19 19 19 19 19 19 19 20 20 20 20 20 20 20 20 20 20 21 21 21 21 21 21
+ 21 21 21 21 22 22 22 22 22 22 22 22 22 22 23 23 23 23 23 23 23 23 23 23
+ 24 24 24 24 24 24 24 24 24 24 25 25 25 25 25 25 25 25 25 25 26 26 26 26
+ 26 26 26 26 26 26 27 27 27 27 27 27 27 27 27 27 28 28 28 28 28 28 28 28
+ 28 28 29 29 29 29 29 29 29 29 29 29 30 30 30 30 30 30 30 30 30 30 31 31
+ 31 31 31 31 31 31 31 31 32 32 32 32 32 32 32 32 32 32 33 33 33 33 33 33
+ 33 33 33 33 34 34 34 34 34 34 34 34 34 34 35 35 35 35 35 35 35 35 35 35
+ 36 36 36 36 36 36 36 36 36 36 37 37 37 37 37 37 37 37 37 37 38 38 38 38
+ 38 38 38 38 38 38 39 39 39 39 39 39 39 39 39 39]
+#+end_example
+
+#+begin_src jupyter-python
+strat_split = StratifiedShuffleSplit(n_splits=1, test_size=40, random_state=42)
+train_valid_idx, test_idx = next(strat_split.split(olivetti.data, olivetti.target))
+X_train_valid = olivetti.data[train_valid_idx]
+y_train_valid = olivetti.target[train_valid_idx]
+X_test = olivetti.data[test_idx]
+y_test = olivetti.target[test_idx]
+
+strat_split = StratifiedShuffleSplit(n_splits=1, test_size=80, random_state=43)
+train_idx, valid_idx = next(strat_split.split(X_train_valid, y_train_valid))
+X_train, y_train = X_train_valid[train_idx], y_train_valid[train_idx]
+X_valid, y_valid = X_train_valid[valid_idx], y_train_valid[valid_idx]
+
+print(X_train.shape, y_train.shape)
+print(X_valid.shape, y_valid.shape)
+print(X_test.shape, y_test.shape)
+#+end_src
+
+#+RESULTS:
+: (280, 4096) (280,)
+: (80, 4096) (80,)
+: (40, 4096) (40,)
+
+*** To speed things up, reduce data's dimensionality using PCA
+
+#+begin_src jupyter-python
+pca = PCA(n_components=0.99)
+X_train_pca = pca.fit_transform(X_train)
+X_valid_pca = pca.transform(X_valid)
+X_test_pca = pca.transform(X_test)
+pca.n_components_
+#+end_src
+
+#+RESULTS:
+: 199
+
+*** Next, cluster the images using K-Means, and ensure that you have a good number of clusters (using one of the techniques discussed in this chapter).
+
+#+begin_src jupyter-python
+k_range = range(5, 150, 5)
+kmeans_per_k = []
+for k in k_range:
+    print(f"{k = }")
+    kmeans = KMeans(n_clusters=k, random_state=42).fit(X_train_pca)
+    kmeans_per_k.append(kmeans)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+k = 5
+k = 10
+k = 15
+k = 20
+k = 25
+k = 30
+k = 35
+k = 40
+k = 45
+k = 50
+k = 55
+k = 60
+k = 65
+k = 70
+k = 75
+k = 80
+k = 85
+k = 90
+k = 95
+k = 100
+k = 105
+k = 110
+k = 115
+k = 120
+k = 125
+k = 130
+k = 135
+k = 140
+k = 145
+#+end_example
+
+#+begin_src jupyter-python
+silhouette_scores = [silhouette_score(X_train_pca, model.labels_)
+                     for model in kmeans_per_k]
+best_index = np.argmax(silhouette_scores)
+best_k = k_range[best_index]
+best_score = silhouette_scores[best_index]
+
+plt.figure(figsize=(8,3))
+plt.plot(k_range, silhouette_scores, 'bo-')
+plt.xlabel("$k$")
+plt.ylabel("Silhouette score")
+plt.plot(best_k, best_score, 'rs');
+print(f"{best_k = }");
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+: best_k = 120
+[[file:./.ob-jupyter/80af4c6529b1ea8293bbbe4e18bb879524036ba2.png]]
+:END:
+
+
+It looks like the best number of clusters is quite high, at 120. You might have expected it to be 40, since there are 40 different people on the pictures. However, the same person may look quite different on different pictures (e.g., with or without glasses, or simply shifted left or right).
+
+#+begin_src jupyter-python
+inertias = [model.inertia_ for model in kmeans_per_k]
+best_inertia = inertias[best_index]
+
+plt.figure(figsize=(8, 3.5))
+plt.plot(k_range, inertias, "bo-")
+plt.xlabel("$k$", fontsize=14)
+plt.ylabel("Inertia", fontsize=14)
+plt.plot(best_k, best_inertia, "rs");
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/89ff01ebbea079d5bedfa85b961e7217f5359c41.png]]
+
+
+The optimal number of clusters is not clear on this inertia diagram, as there is no obvious elbow, so let's stick with k=120.
+
+#+begin_src jupyter-python
+best_model = kmeans_per_k[best_index]
+#+end_src
+
+#+RESULTS:
+
+*** Visualize the clusters: do you see similar faces in each cluster?
+
+#+begin_src jupyter-python
+def plot_faces(faces, labels, n_cols=5):
+    n_rows = (len(faces)-1) // n_cols + 1
+    plt.figure(figsize=(n_cols, n_rows*1.1))
+    for index, (face, label) in enumerate(zip(faces, labels)):
+        plt.subplot(n_rows, n_cols, index+1)
+        plt.imshow(face.reshape(64,64), cmap="gray")
+        plt.axis("off")
+        plt.title(label)
+    plt.show()
+
+for cluster_id in np.unique(best_model.labels_):
+    print("Cluster", cluster_id)
+    in_cluster = best_model.labels_ == cluster_id
+    faces = X_train[in_cluster].reshape(-1, 64, 64)
+    labels = y_train[in_cluster]
+    plot_faces(faces, labels)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+: Cluster 0
+[[file:./.ob-jupyter/cb1d3258cd6a6687b73d3cd676ae226f24c01778.png]]
+: Cluster 1
+[[file:./.ob-jupyter/65bc49f61c85a7903ea09f10ac9228ce6a29b6ac.png]]
+: Cluster 2
+[[file:./.ob-jupyter/4331ca4308fdef58cdf3a036c0806d89615f2a5e.png]]
+: Cluster 3
+[[file:./.ob-jupyter/e94a302e5b2e5dd6ded2b966bb47d046ca27dc63.png]]
+: Cluster 4
+[[file:./.ob-jupyter/1185c8622d8df85ccf11cd044f3d635ded5ec5b4.png]]
+: Cluster 5
+[[file:./.ob-jupyter/abea8aafcc08936c4721a42c69fdafe9eaaf4cc8.png]]
+: Cluster 6
+[[file:./.ob-jupyter/0b3ba329b359de55c57dc520481a4f61c19f9e96.png]]
+: Cluster 7
+[[file:./.ob-jupyter/53908d2813fa9c13ca2d48e2bff6aeb2fd67fae9.png]]
+: Cluster 8
+[[file:./.ob-jupyter/be8c277cb382c0fae660c295bbaecb550f6e3378.png]]
+: Cluster 9
+[[file:./.ob-jupyter/dbf4f424aa2b74d56a6bac811f9c8eff3f5cd11a.png]]
+: Cluster 10
+[[file:./.ob-jupyter/fbf7c76adf102689d7f9ff2737527497c9bc65cb.png]]
+: Cluster 11
+[[file:./.ob-jupyter/aa85253f0c1bdbaffca4884cfd2cbd6dd2ca9c4d.png]]
+: Cluster 12
+[[file:./.ob-jupyter/c38d9249aa80880aee3f0f6218c744074e82b66a.png]]
+: Cluster 13
+[[file:./.ob-jupyter/03c760b5e4784c39b3ea7f93fdd415b01f5b8cc4.png]]
+: Cluster 14
+[[file:./.ob-jupyter/7f86955268549d3115c04c5faf3e0ccf6f2d2ce7.png]]
+: Cluster 15
+[[file:./.ob-jupyter/9dda1d44ff72362344ac7567cc5df8a5be192f1f.png]]
+: Cluster 16
+[[file:./.ob-jupyter/8cf44fb001ecae02db307c96cd334ae32efe3ffc.png]]
+: Cluster 17
+[[file:./.ob-jupyter/dcff573230748329da1a6352516de778c17fe386.png]]
+: Cluster 18
+[[file:./.ob-jupyter/76c39a298ec00c179caf63386627823a1012b42e.png]]
+: Cluster 19
+[[file:./.ob-jupyter/e2cca0b814b8190d2faa50029c5e1c6ed609cfd5.png]]
+: Cluster 20
+[[file:./.ob-jupyter/a0a0c7c4ae581d7cee02b1ab311b66c611a61dfa.png]]
+: Cluster 21
+[[file:./.ob-jupyter/87cca2440546f73f1d89f13aa0bbe60e5d0c2af2.png]]
+: Cluster 22
+[[file:./.ob-jupyter/3f866b949a94149a505dea55c72419c75427734e.png]]
+: Cluster 23
+[[file:./.ob-jupyter/90c8e434a483e0c3cbee80b1e13c5670adbc466a.png]]
+: Cluster 24
+[[file:./.ob-jupyter/bd78a62d6686cd15fb6dfb952187a75791b4f12e.png]]
+: Cluster 25
+[[file:./.ob-jupyter/7ba689b5c68864025d7ed7fc90eb9674755a7d50.png]]
+: Cluster 26
+[[file:./.ob-jupyter/76f5c710812e54092cb5812089e1e2de8457db6b.png]]
+: Cluster 27
+[[file:./.ob-jupyter/f35996ceff53471f5867cecad5bd4d19ae882b55.png]]
+: Cluster 28
+[[file:./.ob-jupyter/00438ca91cb518b2200df54364aa4d61de06b052.png]]
+: Cluster 29
+[[file:./.ob-jupyter/319c1692be25d1c6f59592532a4e14273864d8c9.png]]
+: Cluster 30
+[[file:./.ob-jupyter/7700e4b58c0eed0b4dd9d307451ae0dfdc22634d.png]]
+: Cluster 31
+[[file:./.ob-jupyter/80f6813f5688e422281dceabcffded68577854aa.png]]
+: Cluster 32
+[[file:./.ob-jupyter/d6b829ffffc4669f075023f983cd23195e52da02.png]]
+: Cluster 33
+[[file:./.ob-jupyter/9f485ff053372a26e0cf379f736e3967650730d9.png]]
+: Cluster 34
+[[file:./.ob-jupyter/d19bf8546e86dd1a8c9208e616820a954a843164.png]]
+: Cluster 35
+[[file:./.ob-jupyter/af2f393466fcb7b9e2dff91f5093a3262d25e0ce.png]]
+: Cluster 36
+[[file:./.ob-jupyter/5a68156c04243af250d6fa84f846ed82b28f7af9.png]]
+: Cluster 37
+[[file:./.ob-jupyter/8d5d50357f4acc7acb0f1298155193952081bec8.png]]
+: Cluster 38
+[[file:./.ob-jupyter/23b11724f8af3190a96169c21cc2ef40a438b105.png]]
+: Cluster 39
+[[file:./.ob-jupyter/4b09a1dfd0d26bab8e7ab439e877cbb38e5344a3.png]]
+: Cluster 40
+[[file:./.ob-jupyter/c696eca44268deb784bf6613df56cc53b1a41bc1.png]]
+: Cluster 41
+[[file:./.ob-jupyter/329026a948bdd1aaa9a3d016a7fd191a6c0803b3.png]]
+: Cluster 42
+[[file:./.ob-jupyter/31596ab5bc3bffe234f8b05708ced6036c855b92.png]]
+: Cluster 43
+[[file:./.ob-jupyter/3df24873d8d32589d49737246786f07713934cbb.png]]
+: Cluster 44
+[[file:./.ob-jupyter/8416734149bc65bf459b3c6ad948208d7669d09a.png]]
+: Cluster 45
+[[file:./.ob-jupyter/e09f80bb6736f9696b5eac61b40089e3d2b39fdf.png]]
+: Cluster 46
+[[file:./.ob-jupyter/32030b7dd23fcf115b0ae833e12e603efdd0e1d4.png]]
+: Cluster 47
+[[file:./.ob-jupyter/72f60753c86fe3d2c6eb721dde2653659dbbe707.png]]
+: Cluster 48
+[[file:./.ob-jupyter/41622bb9b9e4f6ec6fbebc9983ebc57a8e308c30.png]]
+: Cluster 49
+[[file:./.ob-jupyter/0763474c8a1de44642ae6bfce978c09ed7642f6d.png]]
+: Cluster 50
+[[file:./.ob-jupyter/2e906c2eaf35f35df640d8f1a374a29014e2db50.png]]
+: Cluster 51
+[[file:./.ob-jupyter/189b348e0e6d11a1cce24ad8eee306bcf0a126ef.png]]
+: Cluster 52
+[[file:./.ob-jupyter/8b88e97012aae8a0a77ebe4ae4b9681b116fbf8d.png]]
+: Cluster 53
+[[file:./.ob-jupyter/aecae59c39105772f2b86814f4ea2856d63bc0b7.png]]
+: Cluster 54
+[[file:./.ob-jupyter/908e07e0b5d4c522e12a101ef184b754f7ad0de5.png]]
+: Cluster 55
+[[file:./.ob-jupyter/2e90dc5432bf7450a8adec03fb2deaf8aa0ffa22.png]]
+: Cluster 56
+[[file:./.ob-jupyter/cb5e111e2b09a7a99d6b55fe2368c3732e48b6d7.png]]
+: Cluster 57
+[[file:./.ob-jupyter/e57c4731f702e9d834c1bd8df4f0bbc6e777a6a5.png]]
+: Cluster 58
+[[file:./.ob-jupyter/4539fa7da92f0f2504ccff1a59a6cc532ac818e9.png]]
+: Cluster 59
+[[file:./.ob-jupyter/2b65716eb81f9f16dd01273890150547380762d1.png]]
+: Cluster 60
+[[file:./.ob-jupyter/a895d6e2b49ac12db85f738db0328d780febd963.png]]
+: Cluster 61
+[[file:./.ob-jupyter/84dc306dab9c4220a3d4c298b9006e67210c1313.png]]
+: Cluster 62
+[[file:./.ob-jupyter/47816a2146b0eb79d92b8291dbc5a7666b0ad04f.png]]
+: Cluster 63
+[[file:./.ob-jupyter/954fda51ca82e737f41f1f63a63b1c5f0a226d38.png]]
+: Cluster 64
+[[file:./.ob-jupyter/f4c0a27875e02358a761c424cecef137f22efbdc.png]]
+: Cluster 65
+[[file:./.ob-jupyter/a8c1841a3fd077f6e186832a6770ad157c366f14.png]]
+: Cluster 66
+[[file:./.ob-jupyter/fe19dd046ec13cac6e735273b232fe0749b84aa0.png]]
+: Cluster 67
+[[file:./.ob-jupyter/fc8e805c5aca00767b654065cc7443d62e1aedeb.png]]
+: Cluster 68
+[[file:./.ob-jupyter/a327e5ed4a5b81ab7f497d930e4939a6ef946029.png]]
+: Cluster 69
+[[file:./.ob-jupyter/d6a36430bbf45ec7af440e5d412b3744f72f6009.png]]
+: Cluster 70
+[[file:./.ob-jupyter/d0b3343fa5a727ab894e6f090fc5424440f6ed00.png]]
+: Cluster 71
+[[file:./.ob-jupyter/dcec083878607c8fee91fdfc7a6e6c2bf883e51d.png]]
+: Cluster 72
+[[file:./.ob-jupyter/6f90db38f2bb003a9c5c654c31dbbc2757e81ae7.png]]
+: Cluster 73
+[[file:./.ob-jupyter/d740c243a848c1f711293cf347f3060a13aa5fdb.png]]
+: Cluster 74
+[[file:./.ob-jupyter/7f7fea8c875d626991eb2e9747c9689ad50c979e.png]]
+: Cluster 75
+[[file:./.ob-jupyter/0cadf407afd90b0c132a740bcbe880b489b2a756.png]]
+: Cluster 76
+[[file:./.ob-jupyter/5b796bc6590abb9e63588c64eed2bf8a1126fddd.png]]
+: Cluster 77
+[[file:./.ob-jupyter/8cf1123e5425bd397218dd7c428274367484ff62.png]]
+: Cluster 78
+[[file:./.ob-jupyter/d10c4d0d9e35f3c473ce33d6ee9eb843578ecc30.png]]
+: Cluster 79
+[[file:./.ob-jupyter/ae7096c4c221dcdb6a5d49490aacee4e7e86e780.png]]
+: Cluster 80
+[[file:./.ob-jupyter/1f197a3269ef062a10820805c4b41746fbed023c.png]]
+: Cluster 81
+[[file:./.ob-jupyter/9c97ad6204500f85534f52b83bc3107f20d32a92.png]]
+: Cluster 82
+[[file:./.ob-jupyter/2bb2cd7fd135fccbda0cbd77c7a195e60808c120.png]]
+: Cluster 83
+[[file:./.ob-jupyter/c00ba733e0de65c82f52135833cf1eb96f70df08.png]]
+: Cluster 84
+[[file:./.ob-jupyter/423916a9714524c2d1b0a6f7b0d29e73f4d8b2fd.png]]
+: Cluster 85
+[[file:./.ob-jupyter/cc74d03325aa31c94ae2929f25b484a6298a5ef3.png]]
+: Cluster 86
+[[file:./.ob-jupyter/19f0fda3fc4cc57545bc23039b3e3361aa30f86c.png]]
+: Cluster 87
+[[file:./.ob-jupyter/7212b026ce179a60d5904d45c4c373aef77539b1.png]]
+: Cluster 88
+[[file:./.ob-jupyter/b84155320f0e1192dbab7924f994e5a07c2844ea.png]]
+: Cluster 89
+[[file:./.ob-jupyter/296e967555ff1beddfbfe10ce9554603434c700a.png]]
+: Cluster 90
+[[file:./.ob-jupyter/df28030ecc7054c2a2a952e9f1389152fc586bf2.png]]
+: Cluster 91
+[[file:./.ob-jupyter/e961169a7e21823388b7b7b73bb45f0df8cb742d.png]]
+: Cluster 92
+[[file:./.ob-jupyter/64cabf4b195e9d962eeb9ac7f600224127604a1f.png]]
+: Cluster 93
+[[file:./.ob-jupyter/c27db3e4f0cb950a5b394b2e88d270a4d037032d.png]]
+: Cluster 94
+[[file:./.ob-jupyter/4e4a3e5012daacbd3379e5960098f15940cc5fcd.png]]
+: Cluster 95
+[[file:./.ob-jupyter/9f142e5319685581274d176a05cacec443792cc7.png]]
+: Cluster 96
+[[file:./.ob-jupyter/58fb4cee1aa521885d976dca81127fef79c141f1.png]]
+: Cluster 97
+[[file:./.ob-jupyter/ea9bb27b4cb8dc1b6622c68dc29783526db7a974.png]]
+: Cluster 98
+[[file:./.ob-jupyter/50cc33a9e6b5223d44b55ee489575b480735083c.png]]
+: Cluster 99
+[[file:./.ob-jupyter/f9be492ad1a575fd5523dd322ad1dbe4a6b48b5b.png]]
+: Cluster 100
+[[file:./.ob-jupyter/68e5865109279d7554ef015baff7777945019d58.png]]
+: Cluster 101
+[[file:./.ob-jupyter/403baab200d0b37a4d06c4447c2545e4ef1eba2b.png]]
+: Cluster 102
+[[file:./.ob-jupyter/598f0f9f2d93abdde1fb84dad3c67e5f7db19579.png]]
+: Cluster 103
+[[file:./.ob-jupyter/c9532a353a174f05e3994774332e622ea9823ec2.png]]
+: Cluster 104
+[[file:./.ob-jupyter/03ab7cd80bcbb7f26daee9c481dc09d637b3a022.png]]
+: Cluster 105
+[[file:./.ob-jupyter/440f1e18009b8c9716f774e5b1fab83ea37c83b2.png]]
+: Cluster 106
+[[file:./.ob-jupyter/b733f3cebc79aadff4bf1fa4fbf3ceea65f3c710.png]]
+: Cluster 107
+[[file:./.ob-jupyter/af28f5c3b441547e4f725021977223af168b84fd.png]]
+: Cluster 108
+[[file:./.ob-jupyter/cc5df9fb484fe29a34ad2e3c73a8497c74b4009a.png]]
+: Cluster 109
+[[file:./.ob-jupyter/baf39a1397f477f21af987e89422c7ec0ff0dfb5.png]]
+: Cluster 110
+[[file:./.ob-jupyter/181ab2bdb32271dd21b0b9d4b8a861f28b52d5e1.png]]
+: Cluster 111
+[[file:./.ob-jupyter/9cc96d76aba10c1fb01437d6276f9e6c10f22cd2.png]]
+: Cluster 112
+[[file:./.ob-jupyter/294f65049198601be65d924863ed7959f792d8f7.png]]
+: Cluster 113
+[[file:./.ob-jupyter/e3fa4f0fd5ea7756ba7d565ca9f770857b3c5f27.png]]
+: Cluster 114
+[[file:./.ob-jupyter/6424190c6c2fa199e679a8055b1cc38a8bd3e33d.png]]
+: Cluster 115
+[[file:./.ob-jupyter/86a940ed4b459048532221db4fa4536b56f0d84f.png]]
+: Cluster 116
+[[file:./.ob-jupyter/8eaeea5337fa011380f447df3534d2b434dc41da.png]]
+: Cluster 117
+[[file:./.ob-jupyter/cf18fb79f2dd5e7e20a7cbf0a3e9f90a254977d5.png]]
+: Cluster 118
+[[file:./.ob-jupyter/9496bc1fb8b0b9551eebf0eda17633725dab0c2f.png]]
+: Cluster 119
+[[file:./.ob-jupyter/a988a481711aafd299b8099a0107e0aec0789998.png]]
+:END:
+
+
+
+About 2 out of 3 clusters are useful: that is, they contain at least 2 pictures, all of the same person. However, the rest of the clusters have either one or more intruders, or they have just a single picture.
+
+Clustering images this way may be too imprecise to be directly useful when training a model (as we will see below), but it can be tremendously useful when labeling images in a new dataset: it will usually make labelling much faster.
+
+
+
+** 11. Using Clustering as Preprocessing for Classification
+
+*** Continuing with the Olivetti faces dataset, train a classifier to predict which person is represented in each picture, and evaluate it on the validation set.
+
+#+begin_src jupyter-python
+clf = RandomForestClassifier(n_estimators=150, random_state=43)
+clf.fit(X_train_pca, y_train)
+clf.score(X_valid_pca, y_valid)
+#+end_src
+
+#+RESULTS:
+: 0.925
+
+*** Next, use K-Means as a dimensionality reduction tool, and train a classifier on the reduced set.
+
+#+begin_src jupyter-python
+X_train_reduced = best_model.transform(X_train_pca)
+X_valid_reduced = best_model.transform(X_valid_pca)
+X_test_reduced = best_model.transform(X_test_pca)
+
+clf = RandomForestClassifier(n_estimators=150, random_state=42)
+clf.fit(X_train_reduced, y_train)
+clf.score(X_valid_reduced, y_valid)
+#+end_src
+
+#+RESULTS:
+: 0.7
+
+*** Search for the number of clusters that allows the classifier to get the best performance: what performance can you reach?
+
+We could use a GridSearchCV like we did earlier in this notebook, but since we already have a validation set, we don't need K-fold cross-validation, and we're only exploring a single hyperparameter, so it's simpler to just run a loop manually:
+
+#+begin_src jupyter-python
+for n_clusters in k_range:
+    pipeline = Pipeline([
+        ("kmeans", KMeans(n_clusters=n_clusters, random_state=n_clusters)),
+        ("forest_clf", RandomForestClassifier(n_estimators=150, random_state=42)),
+    ])
+    pipeline.fit(X_train_pca, y_train)
+    print(n_clusters, pipeline.score(X_valid_pca, y_valid))
+#+end_src
+
+#+RESULTS:
+#+begin_example
+5 0.3625
+10 0.55
+15 0.6125
+20 0.6625
+25 0.6625
+30 0.7
+35 0.6875
+40 0.7125
+45 0.7
+50 0.7375
+55 0.7375
+60 0.75
+65 0.725
+70 0.7375
+75 0.7875
+80 0.7125
+85 0.725
+90 0.775
+95 0.7625
+100 0.65
+105 0.7125
+110 0.725
+115 0.7625
+120 0.75
+125 0.725
+130 0.775
+135 0.7375
+140 0.7375
+145 0.725
+#+end_example
+
+Oh well, even by tuning the number of clusters, we never get beyond 80% accuracy. Looks like the distances to the cluster centroids are not as informative as the original images.
+
+*** What if you append the features from the reduced set to the original features (again, searching for the best number of clusters)?
+
+#+begin_src jupyter-python
+X_train_extended = np.c_[X_train_pca, X_train_reduced]
+X_valid_extended = np.c_[X_valid_pca, X_valid_reduced]
+X_test_extended = np.c_[X_test_pca, X_test_reduced]
+
+clf = RandomForestClassifier(n_estimators=150, random_state=42)
+clf.fit(X_train_extended, y_train)
+clf.score(X_valid_extended, y_valid)
+#+end_src
+
+#+RESULTS:
+: 0.8125
+
+That's a bit better, but still worse than without the cluster features. The clusters are not useful to directly train a classifier in this case (but they can still help when labelling new training instances).
+
+
+** 12. A Gaussian Mixture Model for the Olivetti Faces Dataset
+
+*** Train a Gaussian mixture model on the Olivetti faces dataset. To speed up the algorithm, you should probably reduce the dataset's dimensionality (e.g., use PCA, preserving 99% of the variance).
+
+#+begin_src jupyter-python
+gm = GaussianMixture(n_components=40, random_state=42)
+y_pred = gm.fit_predict(X_train_pca)
+#+end_src
+
+#+RESULTS:
+
+*** Use the model to generate some new faces (using the sample() method), and visualize them (if you used PCA, you will need to use its inverse_transform() method).
+
+#+begin_src jupyter-python
+n_gen_faces = 20
+gen_faces_reduced, y_gen_faces = gm.sample(n_samples=n_gen_faces)
+gen_faces = pca.inverse_transform(gen_faces_reduced)
+plot_faces(gen_faces, y_gen_faces);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/3c978cd7e0c7e73212a2ad075ec5a6e641b0050b.png]]
+
+
+*** Try to modify some images (e.g., rotate, flip, darken) and see if the model can detect the anomalies (i.e., compare the output of the score_samples() method for normal images and for anomalies).
+
+#+begin_src jupyter-python
+n_rotated = 4
+rotated = np.transpose(X_train[:n_rotated].reshape(-1, 64, 64), axes=[0, 2, 1])
+rotated = rotated.reshape(-1, 64*64)
+y_rotated = y_train[:n_rotated]
+
+n_flipped = 3
+flipped = X_train[:n_flipped].reshape(-1, 64, 64)[:, ::-1]
+flipped = flipped.reshape(-1, 64*64)
+y_flipped = y_train[:n_flipped]
+
+n_darkened = 3
+darkened = X_train[:n_darkened].copy()
+darkened[:, 1:-1] *= 0.3
+darkened = darkened.reshape(-1, 64*64)
+y_darkened = y_train[:n_darkened]
+
+X_bad_faces = np.r_[rotated, flipped, darkened]
+y_bad = np.concatenate([y_rotated, y_flipped, y_darkened])
+
+plot_faces(X_bad_faces, y_bad);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/827cd56d05487f4108a6e3fae74e2166f20dbed6.png]]
+
+#+begin_src jupyter-python
+X_bad_faces_pca = pca.transform(X_bad_faces)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+gm.score_samples(X_bad_faces_pca)
+#+end_src
+
+#+RESULTS:
+: array([-2.43643123e+07, -1.89785021e+07, -3.78112541e+07, -4.98187712e+07,
+:        -3.20479318e+07, -1.37531142e+07, -2.92374068e+07, -1.05489419e+08,
+:        -1.19575850e+08, -6.74258953e+07])
+
+The bad faces are all considered highly unlikely by the Gaussian Mixture model. Compare this to the scores of some training instances:
+
+#+begin_src jupyter-python
+gm.score_samples(X_train_pca[:10])
+#+end_src
+
+#+RESULTS:
+: array([1163.0202107 , 1134.03638048, 1156.3213293 , 1170.67602783,
+:        1141.45404894, 1154.3520518 , 1091.32894801, 1111.4114953 ,
+:        1096.43049172, 1132.98982615])
+
+
+** 13. Using Dimensionality Reduction Techniques for Anomaly Detection
+
+*** Some dimensionality reduction techniques can also be used for anomaly detection. For example, take the Olivetti faces dataset and reduce it with PCA, preserving 99% of the variance. Then compute the reconstruction error for each image. Next, take some of the modified images you built in the previous exercise, and look at their reconstruction error: notice how much larger the reconstruction error is. If you plot a reconstructed image, you will see why: it tries to reconstruct a normal face.
+
+We already reduced the dataset using PCA earlier:
+
+#+begin_src jupyter-python
+X_train_pca
+#+end_src
+
+#+RESULTS:
+#+begin_example
+array([[ 3.7807996e+00, -1.8547925e+00, -5.1440449e+00, ...,
+        -1.3562669e-01, -2.1408588e-01,  6.1192211e-02],
+       [ 1.0148842e+01, -1.5275446e+00, -7.6698333e-01, ...,
+         1.2393117e-01, -1.3526508e-01, -2.3277551e-02],
+       [-1.0015289e+01,  2.8772800e+00, -9.1988075e-01, ...,
+         7.2608538e-02, -2.9628894e-03,  1.2489180e-01],
+       ...,
+       [ 2.4758754e+00,  2.9559708e+00,  1.2998550e+00, ...,
+        -2.0911027e-02,  3.4847807e-02, -1.5432370e-01],
+       [-3.2203162e+00,  5.3489785e+00,  1.3942677e+00, ...,
+         5.7552733e-02, -2.2830698e-01,  1.5557796e-01],
+       [-9.2287707e-01, -3.6470287e+00,  2.2608795e+00, ...,
+         1.3685401e-01, -6.9125973e-02,  6.2682636e-02]], dtype=float32)
+#+end_example
+
+#+begin_src jupyter-python
+def reconstruction_errors(pca, X):
+    X_pca = pca.transform(X)
+    X_reconstructed = pca.inverse_transform(X_pca)
+    mse = np.square(X_reconstructed - X).mean(axis=-1)
+    return mse
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+print(reconstruction_errors(pca, X_train).mean())
+print(reconstruction_errors(pca, X_bad_faces).mean())
+#+end_src
+
+#+RESULTS:
+: 0.00019205349
+: 0.0047073537
+
+Notice how much larger the reconstruction error is. If you plot a reconstructed image, you will see why: it tries to reconstruct a normal face.
+
+#+begin_src jupyter-python
+plot_faces(X_bad_faces, y_gen_faces)
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/2848cd0da0cedee5d2c48f85eaee14502373aca2.png]]
+
+#+begin_src jupyter-python
+X_bad_faces_reconstructed = pca.inverse_transform(X_bad_faces_pca)
+plot_faces(X_bad_faces_reconstructed, y_gen_faces)
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/39b3a0c58555a461f36416de95f9197cd4501823.png]]
