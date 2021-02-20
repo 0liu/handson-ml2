@@ -1,0 +1,1972 @@
+#+TITLE: Practice Hands-on ML Chap10 Intro to ANN
+
+
+#+begin_src jupyter-python
+from pathlib import Path
+import time
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+
+# Visualization
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
+
+# Scikit-learn
+import sklearn
+from sklearn.datasets import load_iris, fetch_california_housing
+
+# Data processing
+from sklearn.model_selection import train_test_split, StratifiedShuffleSplit
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+
+# Metrics and model selection
+from sklearn.model_selection import RandomizedSearchCV
+
+# Models
+from sklearn.linear_model import Perceptron
+
+# Tensorflow
+import tensorflow as tf
+from tensorflow import keras
+
+# matplotlib and sklearn config
+mpl.rc("axes", labelsize=10, linewidth=0.3)
+mpl.rc("xtick", labelsize=10)
+mpl.rc("ytick", labelsize=10)
+mpl.rc("legend", fontsize=8, fancybox=True)
+mpl.rc("figure", facecolor="white", dpi=120)
+
+sklearn.set_config(print_changed_only=False)
+#+end_src
+
+#+RESULTS:
+
+
+
+* Perceptrons
+
+#+begin_src jupyter-python
+iris = load_iris()
+X = iris.data[:, (2, 3)]  # petal length, petal width
+y = (iris.target == 0).astype(np.int)
+
+per_clf = Perceptron(random_state=42)
+per_clf.fit(X, y)
+y_pred = per_clf.predict([[2, 0.5]])
+y_pred
+#+end_src
+
+#+RESULTS:
+: array([1])
+
+#+begin_src jupyter-python
+a = -per_clf.coef_[0][0] / per_clf.coef_[0][1]
+b = -per_clf.intercept_ / per_clf.coef_[0][1]
+
+axes = [0, 5, 0, 2]
+
+x0, x1 = np.meshgrid(
+        np.linspace(axes[0], axes[1], 500).reshape(-1, 1),
+        np.linspace(axes[2], axes[3], 200).reshape(-1, 1),
+    )
+X_new = np.c_[x0.ravel(), x1.ravel()]
+y_predict = per_clf.predict(X_new)
+zz = y_predict.reshape(x0.shape)
+
+plt.figure(figsize=(10, 4))
+plt.plot(X[y==0, 0], X[y==0, 1], "bs", label="Not Iris-Setosa")
+plt.plot(X[y==1, 0], X[y==1, 1], "yo", label="Iris-Setosa")
+
+plt.plot([axes[0], axes[1]], [a * axes[0] + b, a * axes[1] + b], "k-", linewidth=3)
+custom_cmap = ListedColormap(['#9898ff', '#fafab0'])
+
+plt.contourf(x0, x1, zz, cmap=custom_cmap)
+plt.xlabel("Petal length", fontsize=14)
+plt.ylabel("Petal width", fontsize=14)
+plt.legend(loc="lower right", fontsize=14)
+plt.axis(axes);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/d14922b8bf2f559c3024685dee9a53ab7621a369.png]]
+
+
+
+* Activation functions
+
+#+begin_src jupyter-python
+# np.sign(z)  # step function
+
+def sigmoid(z):
+    return 1 / (1 + np.exp(-z))
+
+# np.tanh(z)
+
+def relu(z):
+    return np.maximum(0, z)
+
+
+def derivative(f, z, eps=0.000001):
+    return (f(z+eps) - f(z-eps)) / (2 * eps)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+z = np.linspace(-5, 5, 200)
+
+plt.figure(figsize=(11,4))
+
+plt.subplot(121)
+plt.plot(z, np.sign(z), "r-", linewidth=1, label="Step")
+plt.plot(z, sigmoid(z), "g--", linewidth=2, label="Sigmoid")
+plt.plot(z, np.tanh(z), "b-", linewidth=2, label="Tanh")
+plt.plot(z, relu(z), "m-.", linewidth=2, label="ReLU")
+plt.grid(True)
+plt.legend(loc="center right", fontsize=14)
+plt.title("Activation functions", fontsize=14)
+plt.axis([-5, 5, -1.2, 1.2])
+
+plt.subplot(122)
+plt.plot(z, derivative(np.sign, z), "r-", linewidth=1, label="Step")
+plt.plot(0, 0, "ro", markersize=5)
+plt.plot(0, 0, "rx", markersize=10)
+plt.plot(z, derivative(sigmoid, z), "g--", linewidth=2, label="Sigmoid")
+plt.plot(z, derivative(np.tanh, z), "b-", linewidth=2, label="Tanh")
+plt.plot(z, derivative(relu, z), "m-.", linewidth=2, label="ReLU")
+plt.grid(True)
+#plt.legend(loc="center right", fontsize=14)
+plt.title("Derivatives", fontsize=14)
+plt.axis([-5, 5, -0.2, 1.2]);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/fb745af3f5ee69bdbd65efc807f88c86ad16749d.png]]
+
+#+begin_src jupyter-python
+def heaviside(z):  # heaviside step function
+    return (z >= 0).astype(z.dtype)
+
+def mlp_xor(x1, x2, activation=heaviside):
+    return activation(-activation(x1 + x2 - 1.5) + activation(x1 + x2 - 0.5) - 0.5)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+x1s = np.linspace(-0.2, 1.2, 100)
+x2s = np.linspace(-0.2, 1.2, 100)
+x1, x2 = np.meshgrid(x1s, x2s)
+
+z1 = mlp_xor(x1, x2, activation=heaviside)
+z2 = mlp_xor(x1, x2, activation=sigmoid)
+
+plt.figure(figsize=(10,4))
+
+plt.subplot(121)
+plt.contourf(x1, x2, z1)
+plt.plot([0, 1], [0, 1], "gs", markersize=20)
+plt.plot([0, 1], [1, 0], "y^", markersize=20)
+plt.title("Activation function: heaviside", fontsize=14)
+plt.grid(True)
+
+plt.subplot(122)
+plt.contourf(x1, x2, z2)
+plt.plot([0, 1], [0, 1], "gs", markersize=20)
+plt.plot([0, 1], [1, 0], "y^", markersize=20)
+plt.title("Activation function: sigmoid", fontsize=14)
+plt.grid(True);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/bb3a551e8d8488e0f7789b1cde9d431d9907b3e1.png]]
+
+
+* Building an image classifier
+
+#+begin_src jupyter-python
+print("Tensorflow version:", tf.__version__)
+print("Keras API version implemented by tf.keras: ", keras.__version__)
+#+end_src
+
+#+RESULTS:
+: Tensorflow version: 2.4.1
+: Keras API version implemented by tf.keras:  2.4.0
+
+Keras has a number of functions to load popular datasets in keras.datasets. The dataset is already split for you between a training set and a test set, but it can be useful to split the training set further to have a validation set:
+
+#+begin_src jupyter-python
+fashion_mnist = keras.datasets.fashion_mnist
+(X_train_full, y_train_full), (X_test, y_test) = fashion_mnist.load_data()
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+print(f"{X_train_full.shape = }")
+print(f"{X_train_full.dtype = }")
+#+end_src
+
+#+RESULTS:
+: X_train_full.shape = (60000, 28, 28)
+: X_train_full.dtype = dtype('uint8')
+
+#+begin_src jupyter-python
+X_valid, X_train = X_train_full[:5000] / 255, X_train_full[5000:] / 255
+y_valid, y_train = y_train_full[:5000], y_train_full[5000:]
+X_test = X_test / 255
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+plt.imshow(X_train[0], cmap="binary")
+plt.axis('off');
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/6c1141d1a3effb450500ff76337ba047f193d45e.png]]
+
+#+begin_src jupyter-python
+print(y_train)
+print(np.unique(y_train))
+#+end_src
+
+#+RESULTS:
+: [4 0 7 ... 3 0 5]
+: [0 1 2 3 4 5 6 7 8 9]
+
+#+begin_src jupyter-python
+class_names = ["T-shirt/top", "Trouser", "Pullover", "Dress", "Coat",
+               "Sandal", "Shirt", "Sneaker", "Bag", "Ankle boot"]
+class_names[y_train[0]]
+#+end_src
+
+#+RESULTS:
+: Coat
+
+#+begin_src jupyter-python
+n_rows = 4
+n_cols = 10
+plt.figure(figsize=(n_cols * 1.2, n_rows * 1.2))
+for row in range(n_rows):
+    for col in range(n_cols):
+        index = n_cols * row + col
+        plt.subplot(n_rows, n_cols, index + 1)
+        plt.imshow(X_train[index], cmap="binary", interpolation="nearest")
+        plt.axis('off')
+        plt.title(class_names[y_train[index]], fontsize=12)
+plt.subplots_adjust(wspace=0.2, hspace=0.5);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/348bb3b9051e63914977f61722096f8a9602e31b.png]]
+
+#+begin_src jupyter-python
+keras.backend.clear_session()
+np.random.seed(42)
+tf.random.set_seed(42)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+model = keras.models.Sequential([
+    keras.layers.Flatten(input_shape=[28, 28]),
+    keras.layers.Dense(300, activation="relu"),
+    keras.layers.Dense(100, activation="relu"),
+    keras.layers.Dense(10, activation="softmax"),
+])
+print(model.layers)
+model.summary()
+#+end_src
+
+#+RESULTS:
+#+begin_example
+[<tensorflow.python.keras.layers.core.Flatten object at 0x7f87250200d0>, <tensorflow.python.keras.layers.core.Dense object at 0x7f8724fe6fd0>, <tensorflow.python.keras.layers.core.Dense object at 0x7f87245f13d0>, <tensorflow.python.keras.layers.core.Dense object at 0x7f87245f1700>]
+Model: "sequential"
+_________________________________________________________________
+Layer (type)                 Output Shape              Param #
+=================================================================
+flatten (Flatten)            (None, 784)               0
+_________________________________________________________________
+dense (Dense)                (None, 300)               235500
+_________________________________________________________________
+dense_1 (Dense)              (None, 100)               30100
+_________________________________________________________________
+dense_2 (Dense)              (None, 10)                1010
+=================================================================
+Total params: 266,610
+Trainable params: 266,610
+Non-trainable params: 0
+_________________________________________________________________
+#+end_example
+
+#+begin_src jupyter-python
+keras.utils.plot_model(model, show_shapes=True)
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/bef61a250a88e68d7838652e67575479295cb480.png]]
+
+#+begin_src jupyter-python
+hidden1 = model.layers[1]
+hidden1.name
+#+end_src
+
+#+RESULTS:
+: dense
+
+#+begin_src jupyter-python
+model.get_layer(hidden1.name) is hidden1
+#+end_src
+
+#+RESULTS:
+: True
+
+#+begin_src jupyter-python
+weights, biases = hidden1.get_weights()
+weights
+#+end_src
+
+#+RESULTS:
+#+begin_example
+array([[ 0.02448617, -0.00877795, -0.02189048, ..., -0.02766046,
+         0.03859074, -0.06889391],
+       [ 0.00476504, -0.03105379, -0.0586676 , ...,  0.00602964,
+        -0.02763776, -0.04165364],
+       [-0.06189284, -0.06901957,  0.07102345, ..., -0.04238207,
+         0.07121518, -0.07331658],
+       ...,
+       [-0.03048757,  0.02155137, -0.05400612, ..., -0.00113463,
+         0.00228987,  0.05581069],
+       [ 0.07061854, -0.06960931,  0.07038955, ..., -0.00384101,
+         0.00034875,  0.02878492],
+       [-0.06022581,  0.01577859, -0.02585464, ..., -0.00527829,
+         0.00272203, -0.06793761]], dtype=float32)
+#+end_example
+
+#+begin_src jupyter-python
+weights.shape
+#+end_src
+
+#+RESULTS:
+| 784 | 300 |
+
+#+begin_src jupyter-python
+biases
+#+end_src
+
+#+RESULTS:
+#+begin_example
+array([0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+       0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+       0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+       0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+       0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+       0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+       0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+       0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+       0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+       0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+       0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+       0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+       0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+       0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+       0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+       0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+       0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+       0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.], dtype=float32)
+#+end_example
+
+#+begin_src jupyter-python
+biases.shape
+#+end_src
+
+#+RESULTS:
+| 300 |
+
+#+begin_src jupyter-python
+model.compile(
+    loss=keras.losses.sparse_categorical_crossentropy,
+    optimizer=keras.optimizers.SGD(),
+    metrics=[keras.metrics.sparse_categorical_accuracy],
+)
+
+# model.compile(loss="sparse_categorical_crossentropy",
+#               optimizer="sgd",
+#               metrics=["accuracy"])
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+history = model.fit(X_train, y_train, epochs=30, validation_data=(X_valid, y_valid))
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Epoch 1/30
+1719/1719 [==============================] - 3s 1ms/step - loss: 1.0187 - sparse_categorical_accuracy: 0.6807 - val_loss: 0.5207 - val_sparse_categorical_accuracy: 0.8234
+Epoch 2/30
+1719/1719 [==============================] - 2s 945us/step - loss: 0.5028 - sparse_categorical_accuracy: 0.8260 - val_loss: 0.4345 - val_sparse_categorical_accuracy: 0.8538
+Epoch 3/30
+1719/1719 [==============================] - 2s 906us/step - loss: 0.4485 - sparse_categorical_accuracy: 0.8423 - val_loss: 0.5288 - val_sparse_categorical_accuracy: 0.8002
+Epoch 4/30
+1719/1719 [==============================] - 2s 916us/step - loss: 0.4210 - sparse_categorical_accuracy: 0.8531 - val_loss: 0.3916 - val_sparse_categorical_accuracy: 0.8648
+Epoch 5/30
+1719/1719 [==============================] - 2s 910us/step - loss: 0.4061 - sparse_categorical_accuracy: 0.8578 - val_loss: 0.3756 - val_sparse_categorical_accuracy: 0.8678
+Epoch 6/30
+1719/1719 [==============================] - 1s 820us/step - loss: 0.3756 - sparse_categorical_accuracy: 0.8672 - val_loss: 0.3709 - val_sparse_categorical_accuracy: 0.8724
+Epoch 7/30
+1719/1719 [==============================] - 1s 812us/step - loss: 0.3656 - sparse_categorical_accuracy: 0.8708 - val_loss: 0.3623 - val_sparse_categorical_accuracy: 0.8718
+Epoch 8/30
+1719/1719 [==============================] - 1s 805us/step - loss: 0.3481 - sparse_categorical_accuracy: 0.8755 - val_loss: 0.3847 - val_sparse_categorical_accuracy: 0.8622
+Epoch 9/30
+1719/1719 [==============================] - 1s 804us/step - loss: 0.3487 - sparse_categorical_accuracy: 0.8754 - val_loss: 0.3594 - val_sparse_categorical_accuracy: 0.8696
+Epoch 10/30
+1719/1719 [==============================] - 1s 788us/step - loss: 0.3298 - sparse_categorical_accuracy: 0.8834 - val_loss: 0.3433 - val_sparse_categorical_accuracy: 0.8774
+Epoch 11/30
+1719/1719 [==============================] - 1s 801us/step - loss: 0.3221 - sparse_categorical_accuracy: 0.8838 - val_loss: 0.3440 - val_sparse_categorical_accuracy: 0.8794
+Epoch 12/30
+1719/1719 [==============================] - 1s 804us/step - loss: 0.3123 - sparse_categorical_accuracy: 0.8876 - val_loss: 0.3313 - val_sparse_categorical_accuracy: 0.8812
+Epoch 13/30
+1719/1719 [==============================] - 1s 842us/step - loss: 0.3057 - sparse_categorical_accuracy: 0.8893 - val_loss: 0.3273 - val_sparse_categorical_accuracy: 0.8880
+Epoch 14/30
+1719/1719 [==============================] - 1s 824us/step - loss: 0.2991 - sparse_categorical_accuracy: 0.8920 - val_loss: 0.3399 - val_sparse_categorical_accuracy: 0.8782
+Epoch 15/30
+1719/1719 [==============================] - 1s 862us/step - loss: 0.2934 - sparse_categorical_accuracy: 0.8944 - val_loss: 0.3212 - val_sparse_categorical_accuracy: 0.8852
+Epoch 16/30
+1719/1719 [==============================] - 1s 839us/step - loss: 0.2864 - sparse_categorical_accuracy: 0.8981 - val_loss: 0.3091 - val_sparse_categorical_accuracy: 0.8898
+Epoch 17/30
+1719/1719 [==============================] - 1s 829us/step - loss: 0.2779 - sparse_categorical_accuracy: 0.9003 - val_loss: 0.3565 - val_sparse_categorical_accuracy: 0.8738
+Epoch 18/30
+1719/1719 [==============================] - 1s 807us/step - loss: 0.2779 - sparse_categorical_accuracy: 0.8991 - val_loss: 0.3136 - val_sparse_categorical_accuracy: 0.8896
+Epoch 19/30
+1719/1719 [==============================] - 1s 834us/step - loss: 0.2741 - sparse_categorical_accuracy: 0.9025 - val_loss: 0.3123 - val_sparse_categorical_accuracy: 0.8898
+Epoch 20/30
+1719/1719 [==============================] - 1s 847us/step - loss: 0.2700 - sparse_categorical_accuracy: 0.9037 - val_loss: 0.3271 - val_sparse_categorical_accuracy: 0.8810
+Epoch 21/30
+1719/1719 [==============================] - 1s 801us/step - loss: 0.2672 - sparse_categorical_accuracy: 0.9058 - val_loss: 0.3059 - val_sparse_categorical_accuracy: 0.8916
+Epoch 22/30
+1719/1719 [==============================] - 1s 805us/step - loss: 0.2616 - sparse_categorical_accuracy: 0.9047 - val_loss: 0.2965 - val_sparse_categorical_accuracy: 0.8968
+Epoch 23/30
+1719/1719 [==============================] - 1s 797us/step - loss: 0.2550 - sparse_categorical_accuracy: 0.9074 - val_loss: 0.2981 - val_sparse_categorical_accuracy: 0.8948
+Epoch 24/30
+1719/1719 [==============================] - 1s 801us/step - loss: 0.2450 - sparse_categorical_accuracy: 0.9121 - val_loss: 0.3082 - val_sparse_categorical_accuracy: 0.8890
+Epoch 25/30
+1719/1719 [==============================] - 1s 807us/step - loss: 0.2496 - sparse_categorical_accuracy: 0.9104 - val_loss: 0.2983 - val_sparse_categorical_accuracy: 0.8948
+Epoch 26/30
+1719/1719 [==============================] - 1s 811us/step - loss: 0.2429 - sparse_categorical_accuracy: 0.9140 - val_loss: 0.3063 - val_sparse_categorical_accuracy: 0.8884
+Epoch 27/30
+1719/1719 [==============================] - 1s 803us/step - loss: 0.2374 - sparse_categorical_accuracy: 0.9161 - val_loss: 0.3023 - val_sparse_categorical_accuracy: 0.8932
+Epoch 28/30
+1719/1719 [==============================] - 1s 803us/step - loss: 0.2315 - sparse_categorical_accuracy: 0.9174 - val_loss: 0.2988 - val_sparse_categorical_accuracy: 0.8938
+Epoch 29/30
+1719/1719 [==============================] - 1s 791us/step - loss: 0.2281 - sparse_categorical_accuracy: 0.9171 - val_loss: 0.3052 - val_sparse_categorical_accuracy: 0.8910
+Epoch 30/30
+1719/1719 [==============================] - 1s 808us/step - loss: 0.2253 - sparse_categorical_accuracy: 0.9212 - val_loss: 0.3024 - val_sparse_categorical_accuracy: 0.8948
+#+end_example
+#+RESULTS:
+
+#+begin_src jupyter-python
+print(history.params)
+print(history.epoch)
+print(history.history.keys())
+#+end_src
+
+#+RESULTS:
+: {'verbose': 1, 'epochs': 30, 'steps': 1719}
+: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]
+: dict_keys(['loss', 'sparse_categorical_accuracy', 'val_loss', 'val_sparse_categorical_accuracy'])
+
+#+begin_src jupyter-python
+pd.DataFrame(history.history).plot(figsize=(8, 5))
+plt.grid(True)
+plt.gca().set_ylim(0, 1);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/c0d367de8db4e4067b8ca0e4a891cc2a0f10c23e.png]]
+
+#+begin_src jupyter-python
+eval_results = model.evaluate(X_test, y_test)
+print("test loss, test accuracy:", eval_results)
+#+end_src
+
+#+RESULTS:
+: 313/313 [==============================] - 0s 785us/step - loss: 0.3369 - sparse_categorical_accuracy: 0.8827
+: test loss, test accuracy: [0.33691173791885376, 0.8827000260353088]
+
+#+begin_src jupyter-python
+X_new = X_test[:3]
+y_proba = model.predict(X_new)
+y_proba.round(2)
+#+end_src
+
+#+RESULTS:
+: array([[0.  , 0.  , 0.  , 0.  , 0.  , 0.01, 0.  , 0.03, 0.  , 0.96],
+:        [0.  , 0.  , 0.99, 0.  , 0.01, 0.  , 0.  , 0.  , 0.  , 0.  ],
+:        [0.  , 1.  , 0.  , 0.  , 0.  , 0.  , 0.  , 0.  , 0.  , 0.  ]],
+:       dtype=float32)
+
+#+begin_src jupyter-python
+y_pred = np.argmax(model.predict(X_new), axis=-1)
+y_pred
+#+end_src
+
+#+RESULTS:
+: array([9, 2, 1])
+
+#+begin_src jupyter-python
+np.array(class_names)[y_pred]
+#+end_src
+
+#+RESULTS:
+: array(['Ankle boot', 'Pullover', 'Trouser'], dtype='<U11')
+
+#+begin_src jupyter-python
+y_new = y_test[:3]
+y_new
+#+end_src
+
+#+RESULTS:
+: array([9, 2, 1], dtype=uint8)
+
+#+begin_src jupyter-python
+plt.figure(figsize=(7.2, 2.4))
+for index, image in enumerate(X_new):
+    plt.subplot(1, 3, index + 1)
+    plt.imshow(image, cmap="binary", interpolation="nearest")
+    plt.axis('off')
+    plt.title(class_names[y_test[index]], fontsize=12)
+plt.subplots_adjust(wspace=0.2, hspace=0.5);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/3ac5c3eab73ea21fb8c455e4f3073a097ac9ae43.png]]
+
+
+* Regression MLP
+
+#+begin_src jupyter-python
+housing = fetch_california_housing()
+
+X_train_full, X_test, y_train_full, y_test = train_test_split(housing.data, housing.target, random_state=42)
+X_train, X_valid, y_train, y_valid = train_test_split(X_train_full, y_train_full, random_state=42)
+
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_valid = scaler.transform(X_valid)
+X_test = scaler.transform(X_test)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+np.random.seed(42)
+tf.random.set_seed(42)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+model = keras.models.Sequential(
+    [
+        keras.layers.Dense(30, activation="relu", input_shape=X_train.shape[1:]),
+        keras.layers.Dense(1),
+    ]
+)
+model.compile(loss="mean_squared_error", optimizer=keras.optimizers.SGD(lr=1e-3))
+history = model.fit(X_train, y_train, epochs=20, validation_data=(X_valid, y_valid))
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Epoch 1/20
+363/363 [==============================] - 1s 2ms/step - loss: 2.2656 - val_loss: 0.8560
+Epoch 2/20
+363/363 [==============================] - 0s 924us/step - loss: 0.7413 - val_loss: 0.6531
+Epoch 3/20
+363/363 [==============================] - 0s 912us/step - loss: 0.6604 - val_loss: 0.6099
+Epoch 4/20
+363/363 [==============================] - 0s 905us/step - loss: 0.6245 - val_loss: 0.5658
+Epoch 5/20
+363/363 [==============================] - 0s 847us/step - loss: 0.5770 - val_loss: 0.5355
+Epoch 6/20
+363/363 [==============================] - 0s 906us/step - loss: 0.5609 - val_loss: 0.5173
+Epoch 7/20
+363/363 [==============================] - 0s 929us/step - loss: 0.5500 - val_loss: 0.5081
+Epoch 8/20
+363/363 [==============================] - 0s 913us/step - loss: 0.5200 - val_loss: 0.4799
+Epoch 9/20
+363/363 [==============================] - 0s 902us/step - loss: 0.5051 - val_loss: 0.4690
+Epoch 10/20
+363/363 [==============================] - 0s 847us/step - loss: 0.4910 - val_loss: 0.4656
+Epoch 11/20
+363/363 [==============================] - 0s 872us/step - loss: 0.4794 - val_loss: 0.4482
+Epoch 12/20
+363/363 [==============================] - 0s 913us/step - loss: 0.4656 - val_loss: 0.4479
+Epoch 13/20
+363/363 [==============================] - 0s 907us/step - loss: 0.4693 - val_loss: 0.4296
+Epoch 14/20
+363/363 [==============================] - 0s 855us/step - loss: 0.4537 - val_loss: 0.4233
+Epoch 15/20
+363/363 [==============================] - 0s 850us/step - loss: 0.4586 - val_loss: 0.4176
+Epoch 16/20
+363/363 [==============================] - 0s 840us/step - loss: 0.4612 - val_loss: 0.4123
+Epoch 17/20
+363/363 [==============================] - 0s 805us/step - loss: 0.4449 - val_loss: 0.4071
+Epoch 18/20
+363/363 [==============================] - 0s 795us/step - loss: 0.4407 - val_loss: 0.4037
+Epoch 19/20
+363/363 [==============================] - 0s 792us/step - loss: 0.4184 - val_loss: 0.4000
+Epoch 20/20
+363/363 [==============================] - 0s 827us/step - loss: 0.4128 - val_loss: 0.3969
+#+end_example
+
+#+begin_src jupyter-python
+mse_test = model.evaluate(X_test, y_test)
+X_new = X_test[:3]
+y_pred = model.predict(X_new)
+print(mse_test)
+print(y_pred)
+#+end_src
+
+#+RESULTS:
+: 162/162 [==============================] - 0s 577us/step - loss: 0.4212
+: 0.4211779236793518
+: [[0.38856646]
+:  [1.6792021 ]
+:  [3.1022794 ]]
+
+
+* Functional API
+
+** Wide and Deep Neural Network
+#+begin_src jupyter-python
+np.random.seed(42)
+tf.random.set_seed(42)
+
+input_ = keras.layers.Input(shape=X_train.shape[1:])
+hidden1 = keras.layers.Dense(30, activation="relu")(input_)
+hidden2 = keras.layers.Dense(30, activation="relu")(hidden1)
+concat = keras.layers.concatenate([input_, hidden2])
+output = keras.layers.Dense(1)(concat)
+model = keras.models.Model(inputs=[input_], outputs=[output])
+model.summary()
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Model: "model"
+__________________________________________________________________________________________________
+Layer (type)                    Output Shape         Param #     Connected to
+==================================================================================================
+input_1 (InputLayer)            [(None, 8)]          0
+__________________________________________________________________________________________________
+dense_2 (Dense)                 (None, 30)           270         input_1[0][0]
+__________________________________________________________________________________________________
+dense_3 (Dense)                 (None, 30)           930         dense_2[0][0]
+__________________________________________________________________________________________________
+concatenate (Concatenate)       (None, 38)           0           input_1[0][0]
+                                                                 dense_3[0][0]
+__________________________________________________________________________________________________
+dense_4 (Dense)                 (None, 1)            39          concatenate[0][0]
+==================================================================================================
+Total params: 1,239
+Trainable params: 1,239
+Non-trainable params: 0
+__________________________________________________________________________________________________
+#+end_example
+
+#+begin_src jupyter-python
+model.compile(loss="mean_squared_error", optimizer=keras.optimizers.SGD(lr=1e-3))
+history = model.fit(X_train, y_train, epochs=20, validation_data=(X_valid, y_valid))
+mse_test = model.evaluate(X_test, y_test)
+y_pred = model.predict(X_new)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Epoch 1/20
+363/363 [==============================] - 1s 1ms/step - loss: 1.9731 - val_loss: 3.3940
+Epoch 2/20
+363/363 [==============================] - 0s 936us/step - loss: 0.7638 - val_loss: 0.9360
+Epoch 3/20
+363/363 [==============================] - 0s 963us/step - loss: 0.6045 - val_loss: 0.5649
+Epoch 4/20
+363/363 [==============================] - 0s 953us/step - loss: 0.5862 - val_loss: 0.5712
+Epoch 5/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.5452 - val_loss: 0.5045
+Epoch 6/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.5243 - val_loss: 0.4831
+Epoch 7/20
+363/363 [==============================] - 0s 1000us/step - loss: 0.5185 - val_loss: 0.4639
+Epoch 8/20
+363/363 [==============================] - 0s 981us/step - loss: 0.4947 - val_loss: 0.4638
+Epoch 9/20
+363/363 [==============================] - 0s 937us/step - loss: 0.4782 - val_loss: 0.4421
+Epoch 10/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.4708 - val_loss: 0.4313
+Epoch 11/20
+363/363 [==============================] - 0s 1000us/step - loss: 0.4585 - val_loss: 0.4345
+Epoch 12/20
+363/363 [==============================] - 0s 982us/step - loss: 0.4481 - val_loss: 0.4168
+Epoch 13/20
+363/363 [==============================] - 0s 945us/step - loss: 0.4476 - val_loss: 0.4230
+Epoch 14/20
+363/363 [==============================] - 0s 933us/step - loss: 0.4361 - val_loss: 0.4047
+Epoch 15/20
+363/363 [==============================] - 0s 892us/step - loss: 0.4392 - val_loss: 0.4078
+Epoch 16/20
+363/363 [==============================] - 0s 898us/step - loss: 0.4420 - val_loss: 0.3938
+Epoch 17/20
+363/363 [==============================] - 0s 898us/step - loss: 0.4277 - val_loss: 0.3952
+Epoch 18/20
+363/363 [==============================] - 0s 947us/step - loss: 0.4216 - val_loss: 0.3860
+Epoch 19/20
+363/363 [==============================] - 0s 943us/step - loss: 0.4033 - val_loss: 0.3827
+Epoch 20/20
+363/363 [==============================] - 0s 872us/step - loss: 0.3939 - val_loss: 0.4054
+162/162 [==============================] - 0s 530us/step - loss: 0.4032
+#+end_example
+
+** Multi-Input Model
+
+#+begin_src jupyter-python
+np.random.seed(42)
+tf.random.set_seed(42)
+
+input_A = keras.layers.Input(shape=[5], name='wide_input')
+input_B = keras.layers.Input(shape=[6], name='deep_input')
+hidden1 = keras.layers.Dense(30, activation='relu')(input_B)
+hidden2 = keras.layers.Dense(30, activation='relu')(hidden1)
+concat = keras.layers.concatenate([input_A, hidden2])
+output = keras.layers.Dense(1, name='output')(concat)
+model = keras.models.Model(inputs=[input_A, input_B], outputs=[output])
+
+model.compile(loss='mse', optimizer=keras.optimizers.SGD(lr=1e-3))
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+X_train_A, X_train_B = X_train[:, :5], X_train[:, 2:]
+X_valid_A, X_valid_B = X_valid[:, :5], X_valid[:, 2:]
+X_test_A, X_test_B = X_test[:, :5], X_test[:, 2:]
+X_new_A, X_new_B = X_test_A[:3], X_test_B[:3]
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+history = model.fit((X_train_A, X_train_B), y_train, epochs=20,
+                    validation_data=((X_valid_A, X_valid_B), y_valid))
+mse_test = model.evaluate((X_test_A, X_test_B), y_test)
+y_pred = model.predict((X_new_A, X_new_B))
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Epoch 1/20
+363/363 [==============================] - 1s 1ms/step - loss: 3.1941 - val_loss: 0.8072
+Epoch 2/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.7247 - val_loss: 0.6658
+Epoch 3/20
+363/363 [==============================] - 0s 989us/step - loss: 0.6176 - val_loss: 0.5687
+Epoch 4/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.5799 - val_loss: 0.5296
+Epoch 5/20
+363/363 [==============================] - 0s 1000us/step - loss: 0.5409 - val_loss: 0.4993
+Epoch 6/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.5173 - val_loss: 0.4811
+Epoch 7/20
+363/363 [==============================] - 0s 985us/step - loss: 0.5186 - val_loss: 0.4696
+Epoch 8/20
+363/363 [==============================] - 0s 985us/step - loss: 0.4977 - val_loss: 0.4496
+Epoch 9/20
+363/363 [==============================] - 0s 991us/step - loss: 0.4765 - val_loss: 0.4404
+Epoch 10/20
+363/363 [==============================] - 0s 956us/step - loss: 0.4676 - val_loss: 0.4315
+Epoch 11/20
+363/363 [==============================] - 0s 986us/step - loss: 0.4574 - val_loss: 0.4268
+Epoch 12/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.4479 - val_loss: 0.4166
+Epoch 13/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.4487 - val_loss: 0.4125
+Epoch 14/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.4469 - val_loss: 0.4074
+Epoch 15/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.4460 - val_loss: 0.4044
+Epoch 16/20
+363/363 [==============================] - 0s 936us/step - loss: 0.4495 - val_loss: 0.4007
+Epoch 17/20
+363/363 [==============================] - 0s 927us/step - loss: 0.4378 - val_loss: 0.4013
+Epoch 18/20
+363/363 [==============================] - 0s 922us/step - loss: 0.4375 - val_loss: 0.3987
+Epoch 19/20
+363/363 [==============================] - 0s 921us/step - loss: 0.4151 - val_loss: 0.3934
+Epoch 20/20
+363/363 [==============================] - 0s 906us/step - loss: 0.4078 - val_loss: 0.4204
+162/162 [==============================] - 0s 498us/step - loss: 0.4219
+#+end_example
+
+** Multi-Input Multi-Output Model
+
+#+begin_src jupyter-python
+input_A = keras.layers.Input(shape=[5], name="wide_input")
+input_B = keras.layers.Input(shape=[6], name="deep_input")
+hidden1 = keras.layers.Dense(30, activation="relu")(input_B)
+hidden2 = keras.layers.Dense(30, activation="relu")(hidden1)
+concat = keras.layers.concatenate([input_A, hidden2])
+output = keras.layers.Dense(1, name="main_output")(concat)
+aux_output = keras.layers.Dense(1, name="aux_output")(hidden2)
+model = keras.models.Model(inputs=[input_A, input_B],
+                           outputs=[output, aux_output])
+
+model.compile(loss=["mse", "mse"], loss_weights=[0.9, 0.1], optimizer=keras.optimizers.SGD(lr=1e-3))
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+history = model.fit([X_train_A, X_train_B], [y_train, y_train], epochs=20,
+                    validation_data=([X_valid_A, X_valid_B], [y_valid, y_valid]))
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Epoch 1/20
+363/363 [==============================] - 1s 2ms/step - loss: 3.2165 - main_output_loss: 3.0213 - aux_output_loss: 4.9724 - val_loss: 1.5430 - val_main_output_loss: 0.9144 - val_aux_output_loss: 7.2005
+Epoch 2/20
+363/363 [==============================] - 1s 1ms/step - loss: 1.0694 - main_output_loss: 0.8370 - aux_output_loss: 3.1602 - val_loss: 1.3118 - val_main_output_loss: 0.6824 - val_aux_output_loss: 6.9755
+Epoch 3/20
+363/363 [==============================] - 1s 1ms/step - loss: 0.8493 - main_output_loss: 0.6993 - aux_output_loss: 2.1995 - val_loss: 1.2622 - val_main_output_loss: 0.6458 - val_aux_output_loss: 6.8096
+Epoch 4/20
+363/363 [==============================] - 1s 2ms/step - loss: 0.7420 - main_output_loss: 0.6330 - aux_output_loss: 1.7228 - val_loss: 1.2022 - val_main_output_loss: 0.6136 - val_aux_output_loss: 6.5002
+Epoch 5/20
+363/363 [==============================] - 1s 1ms/step - loss: 0.6819 - main_output_loss: 0.5849 - aux_output_loss: 1.5553 - val_loss: 1.1395 - val_main_output_loss: 0.5936 - val_aux_output_loss: 6.0520
+Epoch 6/20
+363/363 [==============================] - 1s 1ms/step - loss: 0.6386 - main_output_loss: 0.5506 - aux_output_loss: 1.4306 - val_loss: 1.0780 - val_main_output_loss: 0.5756 - val_aux_output_loss: 5.5994
+Epoch 7/20
+363/363 [==============================] - 1s 1ms/step - loss: 0.6399 - main_output_loss: 0.5537 - aux_output_loss: 1.4158 - val_loss: 1.0279 - val_main_output_loss: 0.5736 - val_aux_output_loss: 5.1171
+Epoch 8/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.5975 - main_output_loss: 0.5204 - aux_output_loss: 1.2917 - val_loss: 0.9418 - val_main_output_loss: 0.5303 - val_aux_output_loss: 4.6458
+Epoch 9/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.5751 - main_output_loss: 0.4983 - aux_output_loss: 1.2669 - val_loss: 0.8708 - val_main_output_loss: 0.4978 - val_aux_output_loss: 4.2276
+Epoch 10/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.5649 - main_output_loss: 0.4843 - aux_output_loss: 1.2901 - val_loss: 0.8195 - val_main_output_loss: 0.4841 - val_aux_output_loss: 3.8377
+Epoch 11/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.5500 - main_output_loss: 0.4752 - aux_output_loss: 1.2238 - val_loss: 0.7537 - val_main_output_loss: 0.4494 - val_aux_output_loss: 3.4921
+Epoch 12/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.5370 - main_output_loss: 0.4633 - aux_output_loss: 1.2009 - val_loss: 0.7160 - val_main_output_loss: 0.4406 - val_aux_output_loss: 3.1950
+Epoch 13/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.5294 - main_output_loss: 0.4632 - aux_output_loss: 1.1255 - val_loss: 0.6766 - val_main_output_loss: 0.4277 - val_aux_output_loss: 2.9166
+Epoch 14/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.5217 - main_output_loss: 0.4565 - aux_output_loss: 1.1078 - val_loss: 0.6483 - val_main_output_loss: 0.4205 - val_aux_output_loss: 2.6986
+Epoch 15/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.5216 - main_output_loss: 0.4592 - aux_output_loss: 1.0837 - val_loss: 0.6235 - val_main_output_loss: 0.4134 - val_aux_output_loss: 2.5145
+Epoch 16/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.5248 - main_output_loss: 0.4614 - aux_output_loss: 1.0955 - val_loss: 0.6047 - val_main_output_loss: 0.4097 - val_aux_output_loss: 2.3605
+Epoch 17/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.5109 - main_output_loss: 0.4483 - aux_output_loss: 1.0742 - val_loss: 0.5920 - val_main_output_loss: 0.4066 - val_aux_output_loss: 2.2606
+Epoch 18/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.5107 - main_output_loss: 0.4486 - aux_output_loss: 1.0692 - val_loss: 0.5791 - val_main_output_loss: 0.4037 - val_aux_output_loss: 2.1570
+Epoch 19/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.4822 - main_output_loss: 0.4247 - aux_output_loss: 1.0002 - val_loss: 0.5688 - val_main_output_loss: 0.4018 - val_aux_output_loss: 2.0722
+Epoch 20/20
+363/363 [==============================] - 0s 1ms/step - loss: 0.4768 - main_output_loss: 0.4193 - aux_output_loss: 0.9941 - val_loss: 0.5611 - val_main_output_loss: 0.4013 - val_aux_output_loss: 1.9989
+#+end_example
+
+#+begin_src jupyter-python
+total_loss, main_loss, aux_loss = model.evaluate([X_test_A, X_test_B], [y_test, y_test])
+y_pred_main, y_pred_aaux = model.predict([X_new_A, X_new_B])
+#+end_src
+
+#+RESULTS:
+: 162/162 [==============================] - 0s 825us/step - loss: 0.4822 - main_output_loss: 0.4278 - aux_output_loss: 0.9714
+
+
+* The Subclassing API
+
+#+begin_src jupyter-python
+np.random.seed(42)
+tf.random.set_seed(42)
+
+class WideAndDeepModel(keras.models.Model):
+    def __init__(self, units=30, activation="relu", **kwargs):
+        super().__init__(**kwargs)
+        self.hidden1 = keras.layers.Dense(units, activation=activation)
+        self.hidden2 = keras.layers.Dense(units, activation=activation)
+        self.main_output = keras.layers.Dense(1)
+        self.aux_output = keras.layers.Dense(1)
+
+    def call(self, inputs):
+        input_A, input_B = inputs
+        hidden1 = self.hidden1(input_B)
+        hidden2 = self.hidden2(hidden1)
+        concat = keras.layers.concatenate([input_A, hidden2])
+        main_output = self.main_output(concat)
+        aux_output = self.aux_output(hidden2)
+        return main_output, aux_output
+
+
+model = WideAndDeepModel(30, activation="relu")
+model.compile(
+    loss="mse", loss_weights=[0.9, 0.1], optimizer=keras.optimizers.SGD(lr=1e-3)
+)
+history = model.fit(
+    (X_train_A, X_train_B),
+    (y_train, y_train),
+    epochs=10,
+    validation_data=((X_valid_A, X_valid_B), (y_valid, y_valid)),
+)
+total_loss, main_loss, aux_loss = model.evaluate((X_test_A, X_test_B), (y_test, y_test))
+y_pred_main, y_pred_aux = model.predict((X_new_A, X_new_B))
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Epoch 1/10
+363/363 [==============================] - 2s 2ms/step - loss: 3.4633 - output_1_loss: 3.3289 - output_2_loss: 4.6732 - val_loss: 1.6233 - val_output_1_loss: 0.8468 - val_output_2_loss: 8.6117
+Epoch 2/10
+363/363 [==============================] - 0s 1ms/step - loss: 0.9807 - output_1_loss: 0.7503 - output_2_loss: 3.0537 - val_loss: 1.5163 - val_output_1_loss: 0.6836 - val_output_2_loss: 9.0109
+Epoch 3/10
+363/363 [==============================] - 0s 1ms/step - loss: 0.7742 - output_1_loss: 0.6290 - output_2_loss: 2.0810 - val_loss: 1.4639 - val_output_1_loss: 0.6229 - val_output_2_loss: 9.0326
+Epoch 4/10
+363/363 [==============================] - 0s 1ms/step - loss: 0.6952 - output_1_loss: 0.5897 - output_2_loss: 1.6449 - val_loss: 1.3388 - val_output_1_loss: 0.5481 - val_output_2_loss: 8.4552
+Epoch 5/10
+363/363 [==============================] - 0s 1ms/step - loss: 0.6469 - output_1_loss: 0.5508 - output_2_loss: 1.5118 - val_loss: 1.2177 - val_output_1_loss: 0.5194 - val_output_2_loss: 7.5030
+Epoch 6/10
+363/363 [==============================] - 0s 1ms/step - loss: 0.6120 - output_1_loss: 0.5251 - output_2_loss: 1.3943 - val_loss: 1.0935 - val_output_1_loss: 0.5106 - val_output_2_loss: 6.3396
+Epoch 7/10
+363/363 [==============================] - 0s 1ms/step - loss: 0.6114 - output_1_loss: 0.5256 - output_2_loss: 1.3833 - val_loss: 0.9918 - val_output_1_loss: 0.5115 - val_output_2_loss: 5.3151
+Epoch 8/10
+363/363 [==============================] - 0s 1ms/step - loss: 0.5765 - output_1_loss: 0.5024 - output_2_loss: 1.2439 - val_loss: 0.8733 - val_output_1_loss: 0.4733 - val_output_2_loss: 4.4740
+Epoch 9/10
+363/363 [==============================] - 0s 1ms/step - loss: 0.5535 - output_1_loss: 0.4811 - output_2_loss: 1.2057 - val_loss: 0.7832 - val_output_1_loss: 0.4555 - val_output_2_loss: 3.7323
+Epoch 10/10
+363/363 [==============================] - 0s 1ms/step - loss: 0.5456 - output_1_loss: 0.4708 - output_2_loss: 1.2189 - val_loss: 0.7170 - val_output_1_loss: 0.4604 - val_output_2_loss: 3.0262
+162/162 [==============================] - 0s 713us/step - loss: 0.5279 - output_1_loss: 0.4605 - output_2_loss: 1.1352
+#+end_example
+
+
+* Saving and Restoring
+
+#+begin_src jupyter-python
+np.random.seed(42)
+tf.random.set_seed(42)
+
+model = keras.models.Sequential([
+    keras.layers.Dense(30, activation="relu", input_shape=[8]),
+    keras.layers.Dense(30, activation="relu"),
+    keras.layers.Dense(1)
+])
+
+model.compile(loss="mse", optimizer=keras.optimizers.SGD(lr=1e-3))
+history = model.fit(X_train, y_train, epochs=10, validation_data=(X_valid, y_valid))
+mse_test = model.evaluate(X_test, y_test)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Epoch 1/10
+363/363 [==============================] - 1s 1ms/step - loss: 3.3697 - val_loss: 0.7126
+Epoch 2/10
+363/363 [==============================] - 0s 871us/step - loss: 0.6964 - val_loss: 0.6880
+Epoch 3/10
+363/363 [==============================] - 0s 864us/step - loss: 0.6167 - val_loss: 0.5803
+Epoch 4/10
+363/363 [==============================] - 0s 869us/step - loss: 0.5846 - val_loss: 0.5166
+Epoch 5/10
+363/363 [==============================] - 0s 886us/step - loss: 0.5321 - val_loss: 0.4895
+Epoch 6/10
+363/363 [==============================] - 0s 856us/step - loss: 0.5083 - val_loss: 0.4951
+Epoch 7/10
+363/363 [==============================] - 0s 872us/step - loss: 0.5044 - val_loss: 0.4861
+Epoch 8/10
+363/363 [==============================] - 0s 868us/step - loss: 0.4813 - val_loss: 0.4554
+Epoch 9/10
+363/363 [==============================] - 0s 873us/step - loss: 0.4627 - val_loss: 0.4413
+Epoch 10/10
+363/363 [==============================] - 0s 897us/step - loss: 0.4549 - val_loss: 0.4379
+162/162 [==============================] - 0s 473us/step - loss: 0.4382
+#+end_example
+
+#+begin_src jupyter-python
+model.save("my_keras_model.h5")
+model = keras.models.load_model("my_keras_model.h5")
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+X_new = X_test[:3]
+model.predict(X_new)
+#+end_src
+
+#+RESULTS:
+: array([[0.5400236],
+:        [1.6505971],
+:        [3.009824 ]], dtype=float32)
+
+#+begin_src jupyter-python
+model.save_weights("my_keras_weights.ckpt")  # ckpt: checkpoint
+model.load_weights("my_keras_weights.ckpt")
+#+end_src
+
+#+RESULTS:
+: <tensorflow.python.training.tracking.util.CheckpointLoadStatus at 0x7fa90566d9a0>
+
+
+* Using Callbacks during Training
+
+#+begin_src jupyter-python
+keras.backend.clear_session()
+np.random.seed(42)
+tf.random.set_seed(42)
+#+end_src
+
+#+RESULTS:
+
+** ModelCheckpoint Callback
+#+begin_src jupyter-python
+model = keras.models.Sequential([
+    keras.layers.Dense(30, activation='relu', input_shape=[8]),
+    keras.layers.Dense(30, activation='relu'),
+    keras.layers.Dense(1)
+])
+model.compile(loss='mse', optimizer=keras.optimizers.SGD(lr=1e-3))
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+checkpoint_cb = keras.callbacks.ModelCheckpoint("my_keras_model.h5", save_best_only=True)
+history = model.fit(X_train, y_train, epochs=10,
+                    validation_data=(X_valid, y_valid),
+                    callbacks=[checkpoint_cb])
+model = keras.models.load_model("my_keras_model.h5")  # rollback to the best model
+mse_test = model.evaluate(X_test, y_test)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Epoch 1/10
+363/363 [==============================] - 1s 1ms/step - loss: 3.3697 - val_loss: 0.7126
+Epoch 2/10
+363/363 [==============================] - 0s 868us/step - loss: 0.6964 - val_loss: 0.6880
+Epoch 3/10
+363/363 [==============================] - 0s 899us/step - loss: 0.6167 - val_loss: 0.5803
+Epoch 4/10
+363/363 [==============================] - 0s 907us/step - loss: 0.5846 - val_loss: 0.5166
+Epoch 5/10
+363/363 [==============================] - 0s 904us/step - loss: 0.5321 - val_loss: 0.4895
+Epoch 6/10
+363/363 [==============================] - 0s 1ms/step - loss: 0.5083 - val_loss: 0.4951
+Epoch 7/10
+363/363 [==============================] - 0s 937us/step - loss: 0.5044 - val_loss: 0.4861
+Epoch 8/10
+363/363 [==============================] - 0s 1ms/step - loss: 0.4813 - val_loss: 0.4554
+Epoch 9/10
+363/363 [==============================] - 0s 951us/step - loss: 0.4627 - val_loss: 0.4413
+Epoch 10/10
+363/363 [==============================] - 0s 875us/step - loss: 0.4549 - val_loss: 0.4379
+162/162 [==============================] - 0s 463us/step - loss: 0.4382
+#+end_example
+
+
+** EarlyStopping Callback
+
+#+begin_src jupyter-python
+model.compile(loss='mse', optimizer=keras.optimizers.SGD(lr=1e-3))  # After compile, lose the optimizer states but does not change weights
+early_stopping_cb = keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True)
+history = model.fit(X_train, y_train, epochs=100, validation_data=(X_valid, y_valid), callbacks=[checkpoint_cb, early_stopping_cb])
+mse_test = model.evaluate(X_test, y_test)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Epoch 1/100
+363/363 [==============================] - 1s 1ms/step - loss: 0.4578 - val_loss: 0.4110
+Epoch 2/100
+363/363 [==============================] - 0s 948us/step - loss: 0.4430 - val_loss: 0.4266
+Epoch 3/100
+363/363 [==============================] - 0s 874us/step - loss: 0.4376 - val_loss: 0.3996
+Epoch 4/100
+363/363 [==============================] - 0s 851us/step - loss: 0.4361 - val_loss: 0.3939
+Epoch 5/100
+363/363 [==============================] - 0s 892us/step - loss: 0.4204 - val_loss: 0.3889
+Epoch 6/100
+363/363 [==============================] - 0s 963us/step - loss: 0.4112 - val_loss: 0.3866
+Epoch 7/100
+363/363 [==============================] - 0s 1ms/step - loss: 0.4226 - val_loss: 0.3860
+Epoch 8/100
+363/363 [==============================] - 0s 977us/step - loss: 0.4135 - val_loss: 0.3793
+Epoch 9/100
+363/363 [==============================] - 0s 886us/step - loss: 0.4039 - val_loss: 0.3746
+Epoch 10/100
+363/363 [==============================] - 0s 917us/step - loss: 0.4023 - val_loss: 0.3723
+Epoch 11/100
+363/363 [==============================] - 0s 904us/step - loss: 0.3950 - val_loss: 0.3697
+Epoch 12/100
+363/363 [==============================] - 0s 853us/step - loss: 0.3912 - val_loss: 0.3669
+Epoch 13/100
+363/363 [==============================] - 0s 869us/step - loss: 0.3939 - val_loss: 0.3661
+Epoch 14/100
+363/363 [==============================] - 0s 985us/step - loss: 0.3868 - val_loss: 0.3631
+Epoch 15/100
+363/363 [==============================] - 0s 810us/step - loss: 0.3878 - val_loss: 0.3660
+Epoch 16/100
+363/363 [==============================] - 0s 806us/step - loss: 0.3935 - val_loss: 0.3625
+Epoch 17/100
+363/363 [==============================] - 0s 855us/step - loss: 0.3817 - val_loss: 0.3592
+Epoch 18/100
+363/363 [==============================] - 0s 838us/step - loss: 0.3801 - val_loss: 0.3563
+Epoch 19/100
+363/363 [==============================] - 0s 847us/step - loss: 0.3679 - val_loss: 0.3535
+Epoch 20/100
+363/363 [==============================] - 0s 847us/step - loss: 0.3624 - val_loss: 0.3709
+Epoch 21/100
+363/363 [==============================] - 0s 969us/step - loss: 0.3746 - val_loss: 0.3512
+Epoch 22/100
+363/363 [==============================] - 0s 842us/step - loss: 0.3605 - val_loss: 0.3699
+Epoch 23/100
+363/363 [==============================] - 0s 808us/step - loss: 0.3822 - val_loss: 0.3476
+Epoch 24/100
+363/363 [==============================] - 0s 844us/step - loss: 0.3626 - val_loss: 0.3561
+Epoch 25/100
+363/363 [==============================] - 0s 837us/step - loss: 0.3610 - val_loss: 0.3527
+Epoch 26/100
+363/363 [==============================] - 0s 898us/step - loss: 0.3626 - val_loss: 0.3700
+Epoch 27/100
+363/363 [==============================] - 0s 1ms/step - loss: 0.3685 - val_loss: 0.3432
+Epoch 28/100
+363/363 [==============================] - 0s 1ms/step - loss: 0.3684 - val_loss: 0.3592
+Epoch 29/100
+363/363 [==============================] - 0s 1ms/step - loss: 0.3581 - val_loss: 0.3521
+Epoch 30/100
+363/363 [==============================] - 0s 942us/step - loss: 0.3687 - val_loss: 0.3626
+Epoch 31/100
+363/363 [==============================] - 0s 931us/step - loss: 0.3613 - val_loss: 0.3431
+Epoch 32/100
+363/363 [==============================] - 0s 826us/step - loss: 0.3555 - val_loss: 0.3765
+Epoch 33/100
+363/363 [==============================] - 0s 896us/step - loss: 0.3620 - val_loss: 0.3374
+Epoch 34/100
+363/363 [==============================] - 0s 918us/step - loss: 0.3502 - val_loss: 0.3407
+Epoch 35/100
+363/363 [==============================] - 0s 816us/step - loss: 0.3471 - val_loss: 0.3614
+Epoch 36/100
+363/363 [==============================] - 0s 867us/step - loss: 0.3451 - val_loss: 0.3348
+Epoch 37/100
+363/363 [==============================] - 0s 976us/step - loss: 0.3780 - val_loss: 0.3573
+Epoch 38/100
+363/363 [==============================] - 0s 929us/step - loss: 0.3474 - val_loss: 0.3367
+Epoch 39/100
+363/363 [==============================] - 0s 880us/step - loss: 0.3689 - val_loss: 0.3425
+Epoch 40/100
+363/363 [==============================] - 0s 887us/step - loss: 0.3485 - val_loss: 0.3369
+Epoch 41/100
+363/363 [==============================] - 0s 930us/step - loss: 0.3675 - val_loss: 0.3515
+Epoch 42/100
+363/363 [==============================] - 0s 896us/step - loss: 0.3471 - val_loss: 0.3426
+Epoch 43/100
+363/363 [==============================] - 0s 987us/step - loss: 0.3545 - val_loss: 0.3677
+Epoch 44/100
+363/363 [==============================] - 0s 988us/step - loss: 0.3407 - val_loss: 0.3564
+Epoch 45/100
+363/363 [==============================] - 0s 923us/step - loss: 0.3554 - val_loss: 0.3336
+Epoch 46/100
+363/363 [==============================] - 0s 865us/step - loss: 0.3499 - val_loss: 0.3457
+Epoch 47/100
+363/363 [==============================] - 0s 886us/step - loss: 0.3623 - val_loss: 0.3433
+Epoch 48/100
+363/363 [==============================] - 0s 895us/step - loss: 0.3401 - val_loss: 0.3659
+Epoch 49/100
+363/363 [==============================] - 0s 911us/step - loss: 0.3528 - val_loss: 0.3286
+Epoch 50/100
+363/363 [==============================] - 0s 928us/step - loss: 0.3560 - val_loss: 0.3268
+Epoch 51/100
+363/363 [==============================] - 0s 943us/step - loss: 0.3483 - val_loss: 0.3439
+Epoch 52/100
+363/363 [==============================] - 0s 968us/step - loss: 0.3405 - val_loss: 0.3263
+Epoch 53/100
+363/363 [==============================] - 0s 999us/step - loss: 0.3468 - val_loss: 0.3910
+Epoch 54/100
+363/363 [==============================] - 0s 886us/step - loss: 0.3337 - val_loss: 0.3275
+Epoch 55/100
+363/363 [==============================] - 0s 856us/step - loss: 0.3462 - val_loss: 0.3561
+Epoch 56/100
+363/363 [==============================] - 0s 877us/step - loss: 0.3342 - val_loss: 0.3237
+Epoch 57/100
+363/363 [==============================] - 0s 846us/step - loss: 0.3395 - val_loss: 0.3242
+Epoch 58/100
+363/363 [==============================] - 0s 869us/step - loss: 0.3315 - val_loss: 0.3765
+Epoch 59/100
+363/363 [==============================] - 0s 1ms/step - loss: 0.3394 - val_loss: 0.3289
+Epoch 60/100
+363/363 [==============================] - 0s 897us/step - loss: 0.3378 - val_loss: 0.3502
+Epoch 61/100
+363/363 [==============================] - 0s 835us/step - loss: 0.3522 - val_loss: 0.3456
+Epoch 62/100
+363/363 [==============================] - 0s 846us/step - loss: 0.3473 - val_loss: 0.3445
+Epoch 63/100
+363/363 [==============================] - 0s 818us/step - loss: 0.3427 - val_loss: 0.3290
+Epoch 64/100
+363/363 [==============================] - 0s 817us/step - loss: 0.3212 - val_loss: 0.3217
+Epoch 65/100
+363/363 [==============================] - 0s 843us/step - loss: 0.3374 - val_loss: 0.3351
+Epoch 66/100
+363/363 [==============================] - 0s 975us/step - loss: 0.3323 - val_loss: 0.3232
+Epoch 67/100
+363/363 [==============================] - 0s 852us/step - loss: 0.3470 - val_loss: 0.3567
+Epoch 68/100
+363/363 [==============================] - 0s 1ms/step - loss: 0.3316 - val_loss: 0.3256
+Epoch 69/100
+363/363 [==============================] - 0s 806us/step - loss: 0.3354 - val_loss: 0.3349
+Epoch 70/100
+363/363 [==============================] - 0s 819us/step - loss: 0.3316 - val_loss: 0.3559
+Epoch 71/100
+363/363 [==============================] - 0s 864us/step - loss: 0.3371 - val_loss: 0.3583
+Epoch 72/100
+363/363 [==============================] - 0s 845us/step - loss: 0.3201 - val_loss: 0.3286
+Epoch 73/100
+363/363 [==============================] - 0s 813us/step - loss: 0.3373 - val_loss: 0.3203
+Epoch 74/100
+363/363 [==============================] - 0s 934us/step - loss: 0.3327 - val_loss: 0.3839
+Epoch 75/100
+363/363 [==============================] - 0s 894us/step - loss: 0.3268 - val_loss: 0.3233
+Epoch 76/100
+363/363 [==============================] - 0s 931us/step - loss: 0.3322 - val_loss: 0.3475
+Epoch 77/100
+363/363 [==============================] - 0s 850us/step - loss: 0.3224 - val_loss: 0.3407
+Epoch 78/100
+363/363 [==============================] - 0s 827us/step - loss: 0.3331 - val_loss: 0.3462
+Epoch 79/100
+363/363 [==============================] - 0s 830us/step - loss: 0.3310 - val_loss: 0.3347
+Epoch 80/100
+363/363 [==============================] - 0s 790us/step - loss: 0.3323 - val_loss: 0.3353
+Epoch 81/100
+363/363 [==============================] - 0s 795us/step - loss: 0.3297 - val_loss: 0.3276
+Epoch 82/100
+363/363 [==============================] - 0s 793us/step - loss: 0.3441 - val_loss: 0.3167
+Epoch 83/100
+363/363 [==============================] - 0s 821us/step - loss: 0.3369 - val_loss: 0.3281
+Epoch 84/100
+363/363 [==============================] - 0s 818us/step - loss: 0.3182 - val_loss: 0.3636
+Epoch 85/100
+363/363 [==============================] - 0s 806us/step - loss: 0.3235 - val_loss: 0.3176
+Epoch 86/100
+363/363 [==============================] - 0s 806us/step - loss: 0.3184 - val_loss: 0.3156
+Epoch 87/100
+363/363 [==============================] - 0s 827us/step - loss: 0.3395 - val_loss: 0.3528
+Epoch 88/100
+363/363 [==============================] - 0s 825us/step - loss: 0.3264 - val_loss: 0.3258
+Epoch 89/100
+363/363 [==============================] - 0s 954us/step - loss: 0.3210 - val_loss: 0.3629
+Epoch 90/100
+363/363 [==============================] - 0s 856us/step - loss: 0.3192 - val_loss: 0.3376
+Epoch 91/100
+363/363 [==============================] - 0s 930us/step - loss: 0.3237 - val_loss: 0.3212
+Epoch 92/100
+363/363 [==============================] - 0s 875us/step - loss: 0.3281 - val_loss: 0.3456
+Epoch 93/100
+363/363 [==============================] - 0s 972us/step - loss: 0.3424 - val_loss: 0.3158
+Epoch 94/100
+363/363 [==============================] - 0s 791us/step - loss: 0.3209 - val_loss: 0.3408
+Epoch 95/100
+363/363 [==============================] - 0s 827us/step - loss: 0.3230 - val_loss: 0.3379
+Epoch 96/100
+363/363 [==============================] - 0s 804us/step - loss: 0.3342 - val_loss: 0.3214
+162/162 [==============================] - 0s 478us/step - loss: 0.3310
+#+end_example
+
+** Custom Callback
+
+#+begin_src jupyter-python
+class PrintValTrainRatioCallback(keras.callbacks.Callback):
+    def on_epoch_end(self, epoch, logs):
+        print(f"val_loss/train_loss: {logs['val_loss'] / logs['loss']:.2f}\n")
+
+val_train_ratio_cb = PrintValTrainRatioCallback()
+history = model.fit(X_train, y_train, epochs=3, validation_data=(X_valid, y_valid), callbacks=[val_train_ratio_cb])
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Epoch 1/3
+363/363 [==============================] - 0s 1ms/step - loss: 0.3289 - val_loss: 0.3306
+val_loss/train_loss: 1.01
+
+Epoch 2/3
+363/363 [==============================] - 0s 948us/step - loss: 0.3286 - val_loss: 0.3409
+val_loss/train_loss: 1.04
+
+Epoch 3/3
+363/363 [==============================] - 0s 939us/step - loss: 0.3284 - val_loss: 0.3261
+val_loss/train_loss: 0.99
+#+end_example
+
+
+* TensorBoard
+
+#+begin_src jupyter-python
+root_logdir = Path('.').joinpath("my_logs")
+def get_run_logdir():
+    run_id = time.strftime("run_%Y_%m_%d-%H_%M_%S")
+    return root_logdir.joinpath(run_id)
+run_logdir = get_run_logdir()
+run_logdir
+#+end_src
+
+#+RESULTS:
+: PosixPath('my_logs/run_2021_02_19-11_15_18')
+
+#+begin_src jupyter-python
+keras.backend.clear_session()
+np.random.seed(42)
+tf.random.set_seed(42)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+model = keras.models.Sequential([
+    keras.layers.Dense(30, activation="relu", input_shape=[8]),
+    keras.layers.Dense(30, activation="relu"),
+    keras.layers.Dense(1)
+])
+model.compile(loss="mse", optimizer=keras.optimizers.SGD(lr=1e-3))
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+tensorboard_cb = keras.callbacks.TensorBoard(run_logdir)
+history = model.fit(X_train, y_train, epochs=30,
+                    validation_data=(X_valid, y_valid),
+                    callbacks=[checkpoint_cb, tensorboard_cb])
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Epoch 1/30
+363/363 [==============================] - 1s 2ms/step - loss: 3.3697 - val_loss: 0.7126
+Epoch 2/30
+363/363 [==============================] - 0s 866us/step - loss: 0.6964 - val_loss: 0.6880
+Epoch 3/30
+363/363 [==============================] - 0s 880us/step - loss: 0.6167 - val_loss: 0.5803
+Epoch 4/30
+363/363 [==============================] - 0s 871us/step - loss: 0.5846 - val_loss: 0.5166
+Epoch 5/30
+363/363 [==============================] - 0s 890us/step - loss: 0.5321 - val_loss: 0.4895
+Epoch 6/30
+363/363 [==============================] - 0s 1ms/step - loss: 0.5083 - val_loss: 0.4951
+Epoch 7/30
+363/363 [==============================] - 0s 989us/step - loss: 0.5044 - val_loss: 0.4861
+Epoch 8/30
+363/363 [==============================] - 0s 897us/step - loss: 0.4813 - val_loss: 0.4554
+Epoch 9/30
+363/363 [==============================] - 0s 867us/step - loss: 0.4627 - val_loss: 0.4413
+Epoch 10/30
+363/363 [==============================] - 0s 892us/step - loss: 0.4549 - val_loss: 0.4379
+Epoch 11/30
+363/363 [==============================] - 0s 1ms/step - loss: 0.4416 - val_loss: 0.4396
+Epoch 12/30
+363/363 [==============================] - 0s 867us/step - loss: 0.4295 - val_loss: 0.4507
+Epoch 13/30
+363/363 [==============================] - 0s 850us/step - loss: 0.4326 - val_loss: 0.3997
+Epoch 14/30
+363/363 [==============================] - 0s 886us/step - loss: 0.4207 - val_loss: 0.3956
+Epoch 15/30
+363/363 [==============================] - 0s 868us/step - loss: 0.4198 - val_loss: 0.3916
+Epoch 16/30
+363/363 [==============================] - 0s 959us/step - loss: 0.4248 - val_loss: 0.3937
+Epoch 17/30
+363/363 [==============================] - 0s 955us/step - loss: 0.4105 - val_loss: 0.3809
+Epoch 18/30
+363/363 [==============================] - 0s 968us/step - loss: 0.4070 - val_loss: 0.3793
+Epoch 19/30
+363/363 [==============================] - 0s 1ms/step - loss: 0.3902 - val_loss: 0.3850
+Epoch 20/30
+363/363 [==============================] - 0s 1ms/step - loss: 0.3864 - val_loss: 0.3809
+Epoch 21/30
+363/363 [==============================] - 0s 902us/step - loss: 0.3978 - val_loss: 0.3701
+Epoch 22/30
+363/363 [==============================] - 0s 857us/step - loss: 0.3816 - val_loss: 0.3781
+Epoch 23/30
+363/363 [==============================] - 0s 916us/step - loss: 0.4042 - val_loss: 0.3650
+Epoch 24/30
+363/363 [==============================] - 0s 879us/step - loss: 0.3823 - val_loss: 0.3655
+Epoch 25/30
+363/363 [==============================] - 0s 882us/step - loss: 0.3792 - val_loss: 0.3611
+Epoch 26/30
+363/363 [==============================] - 0s 1ms/step - loss: 0.3800 - val_loss: 0.3626
+Epoch 27/30
+363/363 [==============================] - 0s 915us/step - loss: 0.3858 - val_loss: 0.3564
+Epoch 28/30
+363/363 [==============================] - 0s 1ms/step - loss: 0.3839 - val_loss: 0.3579
+Epoch 29/30
+363/363 [==============================] - 0s 923us/step - loss: 0.3736 - val_loss: 0.3561
+Epoch 30/30
+363/363 [==============================] - 0s 912us/step - loss: 0.3843 - val_loss: 0.3548
+#+end_example
+
+#+begin_src jupyter-python
+%load_ext tensorboard
+%tensorboard --logdir=./my_logs --port=6006
+#+end_src
+
+#+RESULTS:
+: Launching TensorBoard...
+
+#+begin_src jupyter-python
+run_logdir2 = get_run_logdir()
+run_logdir2
+#+end_src
+
+#+RESULTS:
+: PosixPath('my_logs/run_2021_02_19-11_21_30')
+
+#+begin_src jupyter-python
+keras.backend.clear_session()
+np.random.seed(42)
+tf.random.set_seed(42)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+model = keras.models.Sequential([
+    keras.layers.Dense(30, activation="relu", input_shape=[8]),
+    keras.layers.Dense(30, activation="relu"),
+    keras.layers.Dense(1)
+])
+model.compile(loss='mse', optimizer=keras.optimizers.SGD(lr=0.05))
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+tensorboard_cb = keras.callbacks.TensorBoard(run_logdir2)
+history = model.fit(X_train, y_train, epochs=30,
+                    validation_data=(X_valid, y_valid),
+                    callbacks=[checkpoint_cb, tensorboard_cb])
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Epoch 1/30
+363/363 [==============================] - 1s 2ms/step - loss: 0.7964 - val_loss: 0.7395
+Epoch 2/30
+363/363 [==============================] - 0s 953us/step - loss: 0.7486 - val_loss: 0.7240
+Epoch 3/30
+363/363 [==============================] - 0s 996us/step - loss: 0.7511 - val_loss: 0.7446
+Epoch 4/30
+363/363 [==============================] - 0s 1ms/step - loss: 0.7594 - val_loss: 0.7322
+Epoch 5/30
+363/363 [==============================] - 0s 1ms/step - loss: 0.7476 - val_loss: 0.7546
+Epoch 6/30
+363/363 [==============================] - 0s 955us/step - loss: 0.7231 - val_loss: 0.6902
+Epoch 7/30
+363/363 [==============================] - 0s 979us/step - loss: 0.7588 - val_loss: 0.6558
+Epoch 8/30
+363/363 [==============================] - 0s 1ms/step - loss: 0.7315 - val_loss: 0.6295
+Epoch 9/30
+363/363 [==============================] - 0s 1ms/step - loss: 0.7301 - val_loss: 0.6916
+Epoch 10/30
+363/363 [==============================] - 0s 969us/step - loss: 0.7296 - val_loss: 0.7231
+Epoch 11/30
+363/363 [==============================] - 0s 946us/step - loss: 0.7119 - val_loss: 0.7892
+Epoch 12/30
+363/363 [==============================] - 0s 951us/step - loss: 0.7374 - val_loss: 0.7211
+Epoch 13/30
+363/363 [==============================] - 0s 1ms/step - loss: 0.7223 - val_loss: 0.6228
+Epoch 14/30
+363/363 [==============================] - 0s 1ms/step - loss: 0.7172 - val_loss: 0.6794
+Epoch 15/30
+363/363 [==============================] - 0s 1ms/step - loss: 0.7018 - val_loss: 0.9720
+Epoch 16/30
+363/363 [==============================] - 0s 860us/step - loss: 0.6833 - val_loss: 0.5799
+Epoch 17/30
+363/363 [==============================] - 0s 846us/step - loss: 0.6828 - val_loss: 0.7072
+Epoch 18/30
+363/363 [==============================] - 0s 892us/step - loss: 0.7177 - val_loss: 0.6395
+Epoch 19/30
+363/363 [==============================] - 0s 807us/step - loss: 0.7040 - val_loss: 0.6544
+Epoch 20/30
+363/363 [==============================] - 0s 851us/step - loss: 0.6928 - val_loss: 0.6919
+Epoch 21/30
+363/363 [==============================] - 0s 1ms/step - loss: 0.6926 - val_loss: 0.5816
+Epoch 22/30
+363/363 [==============================] - 0s 1ms/step - loss: 0.6733 - val_loss: 0.6974
+Epoch 23/30
+363/363 [==============================] - 0s 836us/step - loss: 0.7069 - val_loss: 0.7212
+Epoch 24/30
+363/363 [==============================] - 0s 865us/step - loss: 0.6893 - val_loss: 0.7621
+Epoch 25/30
+363/363 [==============================] - 0s 882us/step - loss: 0.6394 - val_loss: 1.6586
+Epoch 26/30
+363/363 [==============================] - 0s 832us/step - loss: 1.0394 - val_loss: 0.8157
+Epoch 27/30
+363/363 [==============================] - 0s 862us/step - loss: 0.7808 - val_loss: 0.7434
+Epoch 28/30
+363/363 [==============================] - 0s 955us/step - loss: 0.7397 - val_loss: 0.7238
+Epoch 29/30
+363/363 [==============================] - 0s 974us/step - loss: 0.7313 - val_loss: 0.7101
+Epoch 30/30
+363/363 [==============================] - 0s 987us/step - loss: 0.7146 - val_loss: 0.6672
+#+end_example
+
+
+* Hyperparameter Tuning
+
+#+begin_src jupyter-python
+keras.backend.clear_session()
+np.random.seed(42)
+tf.random.set_seed(42)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+def build_model(n_hidden=1, n_neurons=30, learning_rate=3e-3, input_shape=[8]):
+    model = keras.models.Sequential()
+    model.add(keras.layers.InputLayer(input_shape=input_shape))
+    for layer in range(n_hidden):
+        model.add(keras.layers.Dense(n_neurons, activation="relu"))
+    model.add(keras.layers.Dense(1))
+    optimizer = keras.optimizers.SGD(lr=learning_rate)
+    model.compile(loss="mse", optimizer=optimizer)
+    return model
+
+
+keras_reg = keras.wrappers.scikit_learn.KerasRegressor(build_model)
+keras_reg.fit(
+    X_train,
+    y_train,
+    epochs=100,
+    validation_data=(X_valid, y_valid),
+    callbacks=[keras.callbacks.EarlyStopping(patience=10)],
+    verbose=0
+)
+#+end_src
+
+#+RESULTS:
+: <tensorflow.python.keras.callbacks.History at 0x7f4ec81d6af0>
+
+#+begin_src jupyter-python
+mse_test = keras_reg.score(X_test, y_test)
+#+end_src
+
+#+RESULTS:
+: 162/162 [==============================] - 0s 532us/step - loss: 0.3412
+
+#+begin_src jupyter-python
+X_new = X_test[:3]
+y_pred = keras_reg.predict(X_new)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+param_distribs = {
+    "n_hidden": [0, 1, 2, 3],
+    "n_neurons": np.arange(1, 100).tolist(),
+    "learning_rate": stats.reciprocal(3e-4, 3e-2).rvs(1000).tolist(),  # log-uniform
+}
+
+rnd_search_cv = RandomizedSearchCV(
+    keras_reg, param_distribs, n_iter=10, cv=3, verbose=1
+)
+rnd_search_cv.fit(
+    X_train,
+    y_train,
+    epochs=100,
+    validation_data=(X_valid, y_valid),
+    callbacks=[keras.callbacks.EarlyStopping(patience=10)],
+a    verbose=0,
+)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+#+begin_example
+Fitting 3 folds for each of 10 candidates, totalling 30 fits
+121/121 [==============================] - 0s 453us/step - loss: 0.4551
+121/121 [==============================] - 0s 472us/step - loss: 0.4075
+121/121 [==============================] - 0s 455us/step - loss: 0.3746
+121/121 [==============================] - 0s 460us/step - loss: 0.3573
+121/121 [==============================] - 0s 468us/step - loss: 0.3617
+121/121 [==============================] - 0s 467us/step - loss: 0.3182
+121/121 [==============================] - 0s 442us/step - loss: 0.4252
+121/121 [==============================] - 0s 484us/step - loss: 0.5197
+121/121 [==============================] - 0s 465us/step - loss: 0.4218
+121/121 [==============================] - 0s 457us/step - loss: 0.3824
+121/121 [==============================] - 0s 473us/step - loss: 0.4243
+121/121 [==============================] - 0s 463us/step - loss: 0.3344
+121/121 [==============================] - 0s 429us/step - loss: 1247940.7500
+121/121 [==============================] - 0s 422us/step - loss: 0.7813
+121/121 [==============================] - 0s 456us/step - loss: 0.6076
+121/121 [==============================] - 0s 472us/step - loss: 0.3412
+121/121 [==============================] - 0s 541us/step - loss: 0.3718
+121/121 [==============================] - 0s 492us/step - loss: 0.3072
+121/121 [==============================] - 0s 461us/step - loss: 0.4328
+121/121 [==============================] - 0s 464us/step - loss: 0.4915
+121/121 [==============================] - 0s 454us/step - loss: 0.3814
+121/121 [==============================] - 0s 462us/step - loss: 0.3178
+121/121 [==============================] - 0s 478us/step - loss: 0.3571
+121/121 [==============================] - 0s 495us/step - loss: 0.2983
+121/121 [==============================] - 0s 478us/step - loss: 0.3018
+121/121 [==============================] - 0s 527us/step - loss: 0.3401
+121/121 [==============================] - 0s 484us/step - loss: 0.2868
+121/121 [==============================] - 0s 484us/step - loss: 0.3612
+121/121 [==============================] - 0s 489us/step - loss: 0.3838
+121/121 [==============================] - 0s 458us/step - loss: 0.3205
+#+end_example
+#+begin_example
+RandomizedSearchCV(cv=3, error_score=nan,
+                   estimator=<tensorflow.python.keras.wrappers.scikit_learn.KerasRegressor object at 0x7fcfa126eca0>,
+                   n_iter=10, n_jobs=None,
+                   param_distributions={'learning_rate': [0.001683454924600351,
+                                                          0.02390836445593178,
+                                                          0.008731907739399206,
+                                                          0.004725396149933917,
+                                                          0.0006154014789262348,
+                                                          0.0006153331256530192,
+                                                          0.0003920021771415983,
+                                                          0.0161...
+                                                          0.0024505367684280487,
+                                                          0.011155092541719619,
+                                                          0.0007524347058135697,
+                                                          0.0032032448128444043,
+                                                          0.004591455636549438,
+                                                          0.0003715541189658278, ...],
+                                        'n_hidden': [0, 1, 2, 3],
+                                        'n_neurons': [1, 2, 3, 4, 5, 6, 7, 8, 9,
+                                                      10, 11, 12, 13, 14, 15,
+                                                      16, 17, 18, 19, 20, 21,
+                                                      22, 23, 24, 25, 26, 27,
+                                                      28, 29, 30, ...]},
+                   pre_dispatch='2*n_jobs', random_state=None, refit=True,
+                   return_train_score=False, scoring=None, verbose=1)
+#+end_example
+:END:
+
+#+begin_src jupyter-python
+rnd_search_cv.best_params_
+#+end_src
+
+#+RESULTS:
+| n_neurons | : | 80 | n_hidden | : | 3 | learning_rate | : | 0.0059640580092043885 |
+
+#+begin_src jupyter-python
+rnd_search_cv.best_score_
+#+end_src
+
+#+RESULTS:
+: -0.30956025918324787
+
+#+begin_src jupyter-python
+rnd_search_cv.best_estimator_
+#+end_src
+
+#+RESULTS:
+: <tensorflow.python.keras.wrappers.scikit_learn.KerasRegressor at 0x7fcfa11b1e20>
+
+#+begin_src jupyter-python
+rnd_search_cv.score(X_test, y_test)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+: 162/162 [==============================] - 0s 509us/step - loss: 0.2854
+: -0.2853514850139618
+:END:
+
+#+begin_src jupyter-python
+model = rnd_search_cv.best_estimator_.model
+model
+#+end_src
+
+#+RESULTS:
+: <tensorflow.python.keras.engine.sequential.Sequential at 0x7fcec05bc9a0>
+
+#+begin_src jupyter-python
+model.evaluate(X_test, y_test)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+: 162/162 [==============================] - 0s 524us/step - loss: 0.2854
+: 0.2853514850139618
+:END:
+
+
+
+* Exercises
+
+** 10. Train a deep MLP on the MNIST dataset (you can load it using ~keras.datasets.mnist.load_data()~. See if you can get over 98% precision. Try searching for the optimal learning rate by using the approach presented in this chapter (i.e., by growing the learning rate exponentially, plotting the loss, and finding the point where the loss shoots up). Try adding all the bells and whistles—save checkpoints, use early stopping, and plot learning curves using TensorBoard.
+
+*** Load data using Keras
+
+#+begin_src jupyter-python
+(X_train_full, y_train_full), (X_test, y_test) = keras.datasets.mnist.load_data()
+print(X_train_full.shape)
+print(X_train_full.dtype)
+#+end_src
+
+#+RESULTS:
+: (60000, 28, 28)
+: uint8
+
+*** Split and scale to 0-1
+
+#+begin_src jupyter-python
+X_valid, X_train = X_train_full[:5000] / 255, X_train_full[5000:] / 255
+y_valid, y_train = y_train_full[:5000], y_train_full[5000:]
+X_test = X_test / 255
+#+end_src
+
+#+RESULTS:
+
+*** Inspect
+
+#+begin_src jupyter-python
+plt.imshow(X_train[0], cmap='binary')
+plt.axis('off');
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/80cefeb2e64a01f19442be23af9cf2e06ba6de93.png]]
+
+#+begin_src jupyter-python
+y_train
+#+end_src
+
+#+RESULTS:
+: array([7, 3, 4, ..., 5, 6, 8], dtype=uint8)
+
+#+begin_src jupyter-python
+print(X_valid.shape)
+print(X_test.shape)
+#+end_src
+
+#+RESULTS:
+: (5000, 28, 28)
+: (10000, 28, 28)
+
+#+begin_src jupyter-python
+n_rows = 4
+n_cols = 10
+plt.figure(figsize=(n_cols * 1.2, n_rows * 1.2))
+for row in range(n_rows):
+    for col in range(n_cols):
+        index = n_cols * row + col
+        plt.subplot(n_rows, n_cols, index + 1)
+        plt.imshow(X_train[index], cmap="binary", interpolation="nearest")
+        plt.axis('off')
+        plt.title(y_train[index], fontsize=12)
+plt.subplots_adjust(wspace=0.2, hspace=0.5);
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/041e65190989c9f0496b83e0112d90a7f9619ea7.png]]
+
+
+*** Find the optimal learning rate
+
+
+#+begin_src jupyter-python
+K = keras.backend
+
+class ExponentialLearningRate(keras.callbacks.Callback):
+    def __init__(self, factor):
+        self.factor = factor
+        self.rates = []
+        self.losses = []
+    def on_batch_end(self, batch, logs):
+        self.rates.append(K.get_value(self.model.optimizer.lr))
+        self.losses.append(logs["loss"])
+        K.set_value(self.model.optimizer.lr, self.model.optimizer.lr * self.factor)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+keras.backend.clear_session()
+np.random.seed(42)
+tf.random.set_seed(42)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+model = keras.models.Sequential(
+    [
+        keras.layers.Flatten(input_shape=[28, 28]),
+        keras.layers.Dense(300, activation="relu"),
+        keras.layers.Dense(100, activation="relu"),
+        keras.layers.Dense(10, activation="softmax"),
+    ]
+)
+model.compile(
+    loss="sparse_categorical_crossentropy",
+    optimizer=keras.optimizers.SGD(lr=1e-3),
+    metrics=["accuracy"],
+)
+expon_lr = ExponentialLearningRate(factor=1.005)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+history = model.fit(X_train, y_train, epochs=1,
+                    validation_data=(X_valid, y_valid),
+                    callbacks=[expon_lr])
+#+end_src
+
+#+RESULTS:
+: 1719/1719 [==============================] - 3s 1ms/step - loss: 835491819.1797 - accuracy: 0.4867 - val_loss: 2.3911 - val_accuracy: 0.1126
+
+#+begin_src jupyter-python
+plt.plot(expon_lr.rates, expon_lr.losses)
+plt.gca().set_xscale('log')
+plt.hlines(min(expon_lr.losses), min(expon_lr.rates), max(expon_lr.rates), 'r')
+plt.axis([min(expon_lr.rates), max(expon_lr.rates), 0, expon_lr.losses[0]])
+plt.grid()
+plt.xlabel("Learning rate")
+plt.ylabel("Loss");
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/ce14f6e0606a4db98ed62312b87e66f492d7e003.png]]
+
+
+*** Train and evaluate with the optimal learning rate
+
+The loss starts shooting back up violently when the learning rate goes over 6e-1, so let's try using half of that, at 3e-1:
+
+#+begin_src jupyter-python
+keras.backend.clear_session()
+np.random.seed(42)
+tf.random.set_seed(42)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+model = keras.models.Sequential([
+    keras.layers.Flatten(input_shape=[28, 28]),
+    keras.layers.Dense(300, activation="relu"),
+    keras.layers.Dense(100, activation="relu"),
+    keras.layers.Dense(10, activation="softmax")
+])
+model.compile(loss="sparse_categorical_crossentropy",
+              optimizer=keras.optimizers.SGD(lr=3e-1),
+              metrics=["accuracy"])
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+run_index = 1 # increment this at every run
+run_logdir = Path('.').joinpath("my_mnist_logs", "run_{:03d}".format(run_index))
+run_logdir
+#+end_src
+
+#+RESULTS:
+: PosixPath('my_mnist_logs/run_001')
+
+#+begin_src jupyter-python
+early_stopping_cb = keras.callbacks.EarlyStopping(patience=20)
+checkpoint_cb = keras.callbacks.ModelCheckpoint("my_mnist_model.h5", save_best_only=True)
+tensorboard_cb = keras.callbacks.TensorBoard(run_logdir)
+
+history = model.fit(X_train, y_train, epochs=100,
+                    validation_data=(X_valid, y_valid),
+                    callbacks=[checkpoint_cb, early_stopping_cb, tensorboard_cb])
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Epoch 1/100
+1719/1719 [==============================] - 2s 994us/step - loss: 0.4200 - accuracy: 0.8678 - val_loss: 0.1022 - val_accuracy: 0.9696
+Epoch 2/100
+1719/1719 [==============================] - 1s 845us/step - loss: 0.0936 - accuracy: 0.9701 - val_loss: 0.0902 - val_accuracy: 0.9740
+Epoch 3/100
+1719/1719 [==============================] - 1s 829us/step - loss: 0.0689 - accuracy: 0.9785 - val_loss: 0.0842 - val_accuracy: 0.9784
+Epoch 4/100
+1719/1719 [==============================] - 1s 844us/step - loss: 0.0443 - accuracy: 0.9857 - val_loss: 0.0792 - val_accuracy: 0.9786
+Epoch 5/100
+1719/1719 [==============================] - 1s 827us/step - loss: 0.0350 - accuracy: 0.9879 - val_loss: 0.0812 - val_accuracy: 0.9796
+Epoch 6/100
+1719/1719 [==============================] - 1s 830us/step - loss: 0.0273 - accuracy: 0.9908 - val_loss: 0.0783 - val_accuracy: 0.9806
+Epoch 7/100
+1719/1719 [==============================] - 1s 841us/step - loss: 0.0246 - accuracy: 0.9914 - val_loss: 0.0770 - val_accuracy: 0.9806
+Epoch 8/100
+1719/1719 [==============================] - 1s 815us/step - loss: 0.0157 - accuracy: 0.9952 - val_loss: 0.0905 - val_accuracy: 0.9800
+Epoch 9/100
+1719/1719 [==============================] - 1s 823us/step - loss: 0.0171 - accuracy: 0.9946 - val_loss: 0.0951 - val_accuracy: 0.9824
+Epoch 10/100
+1719/1719 [==============================] - 1s 799us/step - loss: 0.0128 - accuracy: 0.9958 - val_loss: 0.0870 - val_accuracy: 0.9786
+Epoch 11/100
+1719/1719 [==============================] - 1s 806us/step - loss: 0.0119 - accuracy: 0.9967 - val_loss: 0.1132 - val_accuracy: 0.9778
+Epoch 12/100
+1719/1719 [==============================] - 1s 793us/step - loss: 0.0156 - accuracy: 0.9947 - val_loss: 0.0786 - val_accuracy: 0.9830
+Epoch 13/100
+1719/1719 [==============================] - 1s 793us/step - loss: 0.0070 - accuracy: 0.9979 - val_loss: 0.0836 - val_accuracy: 0.9856
+Epoch 14/100
+1719/1719 [==============================] - 1s 821us/step - loss: 0.0070 - accuracy: 0.9977 - val_loss: 0.0989 - val_accuracy: 0.9826
+Epoch 15/100
+1719/1719 [==============================] - 1s 807us/step - loss: 0.0061 - accuracy: 0.9983 - val_loss: 0.1042 - val_accuracy: 0.9796
+Epoch 16/100
+1719/1719 [==============================] - 1s 809us/step - loss: 0.0047 - accuracy: 0.9989 - val_loss: 0.1027 - val_accuracy: 0.9832
+Epoch 17/100
+1719/1719 [==============================] - 1s 799us/step - loss: 0.0048 - accuracy: 0.9984 - val_loss: 0.0965 - val_accuracy: 0.9846
+Epoch 18/100
+1719/1719 [==============================] - 1s 798us/step - loss: 0.0055 - accuracy: 0.9984 - val_loss: 0.0868 - val_accuracy: 0.9846
+Epoch 19/100
+1719/1719 [==============================] - 1s 824us/step - loss: 0.0021 - accuracy: 0.9996 - val_loss: 0.0870 - val_accuracy: 0.9846
+Epoch 20/100
+1719/1719 [==============================] - 1s 823us/step - loss: 0.0011 - accuracy: 0.9997 - val_loss: 0.1018 - val_accuracy: 0.9834
+Epoch 21/100
+1719/1719 [==============================] - 1s 851us/step - loss: 0.0027 - accuracy: 0.9993 - val_loss: 0.0998 - val_accuracy: 0.9838
+Epoch 22/100
+1719/1719 [==============================] - 1s 797us/step - loss: 0.0012 - accuracy: 0.9996 - val_loss: 0.0883 - val_accuracy: 0.9880
+Epoch 23/100
+1719/1719 [==============================] - 1s 791us/step - loss: 1.9551e-04 - accuracy: 1.0000 - val_loss: 0.0889 - val_accuracy: 0.9882
+Epoch 24/100
+1719/1719 [==============================] - 1s 806us/step - loss: 6.8421e-05 - accuracy: 1.0000 - val_loss: 0.0881 - val_accuracy: 0.9888
+Epoch 25/100
+1719/1719 [==============================] - 1s 791us/step - loss: 4.9061e-05 - accuracy: 1.0000 - val_loss: 0.0884 - val_accuracy: 0.9888
+Epoch 26/100
+1719/1719 [==============================] - 1s 795us/step - loss: 4.0059e-05 - accuracy: 1.0000 - val_loss: 0.0889 - val_accuracy: 0.9890
+Epoch 27/100
+1719/1719 [==============================] - 1s 782us/step - loss: 3.6171e-05 - accuracy: 1.0000 - val_loss: 0.0893 - val_accuracy: 0.9890
+#+end_example
+
+#+begin_src jupyter-python
+model = keras.models.load_model('my_mnist_model.h5')  # rollback to best model
+model.evaluate(X_test, y_test)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+: 313/313 [==============================] - 0s 717us/step - loss: 0.0848 - accuracy: 0.9783
+| 0.08480130136013031 | 0.9782999753952026 |
+:END:
+
+#+begin_src jupyter-python
+%load_ext tensorboard
+%tensorboard --logdir=./my_mnist_logs
+#+end_src
+
+#+RESULTS:
+: Launching TensorBoard...
