@@ -1,5 +1,7 @@
 #+TITLE: Practice Hands-on ML Chap05 - SVM
 
+#+PROPERTY: header-args :exports both
+
 #+begin_src jupyter-python
 # Py data
 import pandas as pd
